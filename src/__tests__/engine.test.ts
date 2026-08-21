@@ -2,7 +2,12 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { CopilotEngineState, OnlineSource } from '../runtime/engine'
 import { browserOnlineSource, CopilotEngine } from '../runtime/engine'
-import type { ConsumeRunOptions, CopilotTransport, CreatedTurn } from '../transport/types'
+import type {
+  ConsumeRunOptions,
+  CopilotTranscriptTurn,
+  CopilotTransport,
+  CreatedTurn,
+} from '../transport/types'
 import { StreamInterruptedError } from '../transport/types'
 import type { EnvelopedEvent, SendTurnInput } from '../types'
 
@@ -15,6 +20,8 @@ class FakeTransport implements CopilotTransport {
   cancelled: string[] = []
   createResult: CreatedTurn = { turnId: 't1', threadId: 'th1' }
   createError: Error | undefined
+  thread: CopilotTranscriptTurn[] = []
+  threadError: Error | undefined
   // Each consumeRun resolves through the promise the test settles.
   private pending: Array<{ resolve: () => void; reject: (error: unknown) => void }> = []
 
@@ -42,6 +49,11 @@ class FakeTransport implements CopilotTransport {
 
   async listThreads() {
     return []
+  }
+
+  fetchThread = async (): Promise<CopilotTranscriptTurn[]> => {
+    if (this.threadError) throw this.threadError
+    return this.thread
   }
 
   emit(enveloped: EnvelopedEvent, index = this.consumeCalls.length - 1): void {
@@ -213,6 +225,113 @@ describe('CopilotEngine state', () => {
     await engine.send('one')
     engine.selectThread('other')
     expect(engine.getSnapshot()).toMatchObject({ threadId: 'other', turns: [] })
+  })
+})
+
+// A host that appends a scope hint to the prompt must not see it in the user's own bubble.
+describe('CopilotEngine wire and display text', () => {
+  it('shows what the user typed and sends what the host asked for', async () => {
+    const { engine, transport } = makeEngine()
+    await engine.send('what is the status?', undefined, {
+      wireText: 'what is the status? WORK_ORDER_ID: 4242',
+    })
+    expect(transport.createCalls[0]?.prompt).toBe('what is the status? WORK_ORDER_ID: 4242')
+    const turn = engine.getSnapshot().turns[0]
+    expect(turn?.prompt).toBe('what is the status?')
+    expect(turn?.wirePrompt).toBe('what is the status? WORK_ORDER_ID: 4242')
+  })
+
+  it('records no wirePrompt when the two are the same', async () => {
+    const { engine } = makeEngine()
+    await engine.send('same', undefined, { wireText: '  same  ' })
+    expect(engine.getSnapshot().turns[0]?.wirePrompt).toBeUndefined()
+  })
+
+  it('falls back to the displayed text when the wire text is blank', async () => {
+    const { engine, transport } = makeEngine()
+    await engine.send('typed', undefined, { wireText: '   ' })
+    expect(transport.createCalls[0]?.prompt).toBe('typed')
+  })
+})
+
+describe('CopilotEngine thread transcripts', () => {
+  const transcript: CopilotTranscriptTurn[] = [
+    {
+      id: 'th1-0',
+      prompt: 'earlier question',
+      createdAt: 1,
+      run: {
+        status: 'done',
+        hasPlan: false,
+        steps: [],
+        text: 'earlier answer',
+        charts: [],
+        offline: false,
+      },
+    },
+  ]
+
+  it('restores the stored turns when the transport can rebuild them', async () => {
+    const { engine, transport } = makeEngine()
+    transport.thread = transcript
+    await engine.loadThread('th1')
+    expect(engine.getSnapshot().turns).toEqual(transcript)
+    expect(engine.getSnapshot().threadId).toBe('th1')
+    expect(engine.getSnapshot().threadLoading).toBe(false)
+  })
+
+  it('flags the fetch while it is in flight', async () => {
+    const { engine, transport } = makeEngine()
+    transport.thread = transcript
+    const pending = engine.loadThread('th1')
+    expect(engine.getSnapshot().threadLoading).toBe(true)
+    await pending
+  })
+
+  it('never flags a fetch a transport cannot make', () => {
+    const transport = new FakeTransport()
+    delete (transport as Partial<FakeTransport>).fetchThread
+    const engine = new CopilotEngine({ transport })
+    engine.selectThread('th1')
+    expect(engine.getSnapshot()).toMatchObject({ threadId: 'th1', threadLoading: false })
+  })
+
+  it('drops a transcript that lost the race to a newer selection', async () => {
+    const { engine, transport } = makeEngine()
+    transport.thread = transcript
+    const first = engine.loadThread('th1')
+    transport.thread = [{ ...transcript[0]!, prompt: 'newer question' }]
+    await engine.loadThread('th2')
+    await first
+    expect(engine.getSnapshot().threadId).toBe('th2')
+    expect(engine.getSnapshot().turns.map((turn) => turn.prompt)).toEqual(['newer question'])
+  })
+
+  it('does not wipe a turn the user started while the transcript was loading', async () => {
+    const { engine, transport } = makeEngine()
+    transport.thread = transcript
+    const pending = engine.loadThread('th1')
+    await engine.send('new question')
+    await pending
+    expect(engine.getSnapshot().turns.map((turn) => turn.prompt)).toEqual(['new question'])
+  })
+
+  it('leaves the panel empty and warns when the transcript cannot be fetched', async () => {
+    const warn = vi.fn()
+    const { engine, transport } = makeEngine({ logger: { warn, error: vi.fn() } })
+    transport.threadError = new Error('gone')
+    await engine.loadThread('th1')
+    expect(engine.getSnapshot()).toMatchObject({ turns: [], threadLoading: false })
+    expect(warn).toHaveBeenCalled()
+  })
+
+  it('drops an in-flight transcript when the user starts a new thread', async () => {
+    const { engine, transport } = makeEngine()
+    transport.thread = transcript
+    const pending = engine.loadThread('th1')
+    engine.startNewThread()
+    await pending
+    expect(engine.getSnapshot()).toMatchObject({ turns: [], threadLoading: false })
   })
 })
 

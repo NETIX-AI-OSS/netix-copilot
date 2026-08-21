@@ -316,6 +316,29 @@ describe('AutoTransport.consumeRun', () => {
     expect(auto.selected).toBeUndefined()
   })
 
+  it('rebuilds history through whichever transport is live', async () => {
+    const polling = new AgenticTransport({
+      baseUrl: 'https://x',
+      fetchImpl: (async () => jsonResponse({ id: 4, prompt_text: 'earlier', status: 1 })) as never,
+    })
+    const auto = new AutoTransport(new SseTransport({ baseUrl: 'https://x' }), polling)
+    const turns = await auto.fetchThread('4')
+    expect(turns[0]?.prompt).toBe('earlier')
+  })
+
+  it('reports an empty history for a transport that cannot rebuild one', async () => {
+    const bare: CopilotTransport = {
+      name: 'agentic',
+      createTurn: async () => ({ turnId: '1' }),
+      consumeRun: async () => undefined,
+      cancelTurn: async () => undefined,
+      respondToApproval: async () => undefined,
+      listThreads: async () => [],
+    }
+    const auto = new AutoTransport(bare, bare)
+    expect(await auto.fetchThread('4')).toEqual([])
+  })
+
   it('routes cancel and thread listing to polling until a choice is made', async () => {
     const polling = new AgenticTransport({
       baseUrl: 'https://x',

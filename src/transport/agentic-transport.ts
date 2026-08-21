@@ -1,27 +1,35 @@
 // The transport that works against production today.
 //
 // ml-engine exposes an asynchronous request resource, not a stream:
-//   POST /api/agentic-ml-request/         -> 201 { id, status: 0 }
+//   POST /api/agentic-ml-request/         -> 201 { id, status: 0, turn_id, conversation_id }
 //   GET  /api/agentic-ml-request/{id}/    -> the whole run so far, polled
 //   POST /api/agentic-ml-request/{id}/reply/ -> 202, no body, 409 unless COMPLETED or ERRORED
 //
 // This class polls that resource and diffs successive snapshots into the same event vocabulary
-// the streaming contract will emit, so nothing above the transport layer changes when SSE lands.
+// the streaming contract emits, so nothing above the transport layer changes when SSE lands.
 
 import type { CopilotThread, EnvelopedEvent, JsonObject, SendTurnInput } from '../types'
 import type { HttpConfig } from './http'
 import { request, requestJson } from './http'
-import type { ConsumeRunOptions, CopilotTransport, CreatedTurn, TransportName } from './types'
+import type { CopilotRunRow } from './transcript'
+import {
+  AGENTIC_STATUS,
+  logStep,
+  mapUsage,
+  planSteps,
+  readRunSummary,
+  transcriptFromRequest,
+} from './transcript'
+import type {
+  ConsumeRunOptions,
+  CopilotTranscriptTurn,
+  CopilotTransport,
+  CreatedTurn,
+  TransportName,
+} from './types'
 import { fillTemplate, sleep } from './types'
 
-// service/models.py StatusChoices.
-export const AGENTIC_STATUS = {
-  PENDING: 0,
-  COMPLETED: 1,
-  ERRORED: 2,
-  PROCESSING: 3,
-  CANCELLED: 4,
-} as const
+export { AGENTIC_STATUS } from './transcript'
 
 export interface AgenticEndpoints {
   collection: string
@@ -52,21 +60,10 @@ export interface AgenticTransportConfig extends HttpConfig {
   sleepImpl?: (ms: number, signal?: AbortSignal) => Promise<void>
 }
 
-interface AgenticSnapshot {
-  id?: number | string
-  status?: number
-  response_text?: string | null
-  chart_config?: Record<string, unknown> | null
-  chart_available?: boolean | null
-  plan?: unknown[] | null
-  execution_log?: unknown[] | null
-  tools?: string[] | null
-  error?: string | null
-  execution_time?: number | null
-  usage?: Record<string, unknown> | null
-  created_on?: string
-  updated_on?: string
-  prompt_text?: string
+// The poll resource, plus the two ids that point at the copilot-turn row behind it.
+interface AgenticSnapshot extends CopilotRunRow {
+  turn_id?: number | string | null
+  conversation_id?: number | string | null
 }
 
 // The resume cursor for this transport. It has to describe how much of the snapshot the client
@@ -136,28 +133,6 @@ function commonPrefixLength(a: string, b: string): number {
   return index
 }
 
-// execution_log entries are { tool, call_id, iteration, arguments, output }, so the argument
-// summary has to be built here rather than read off a field.
-function summarizeArguments(value: unknown): string | undefined {
-  if (typeof value === 'string') return value
-  if (!isRecord(value)) return undefined
-  const parts: string[] = []
-  for (const [key, entry] of Object.entries(value)) {
-    if (entry === null || entry === undefined) continue
-    const rendered =
-      typeof entry === 'object'
-        ? Array.isArray(entry)
-          ? `[${entry.length}]`
-          : '{…}'
-        : String(entry)
-    parts.push(`${key}=${rendered}`)
-    if (parts.length === 4) break
-  }
-  if (parts.length === 0) return undefined
-  const summary = parts.join(', ')
-  return summary.length > 160 ? `${summary.slice(0, 157)}…` : summary
-}
-
 function usageSignature(usage: Record<string, unknown> | null | undefined): string {
   if (!usage) return ''
   return JSON.stringify(usage)
@@ -222,10 +197,24 @@ export class AgenticTransport implements CopilotTransport {
     return Promise.resolve()
   }
 
-  async respondToApproval(): Promise<void> {
+  // The poll resource surfaces no awaiting_approval step and serves no decision route, so there
+  // is nothing to record against. Failing loudly is deliberate: resolving quietly would tell the
+  // user a destructive action was authorised when nothing recorded it.
+  async respondToApproval(turnId: string, stepId: string, approved: boolean): Promise<void> {
     throw new Error(
-      'netix-copilot: approvals need the streaming copilot contract; ml-engine does not serve them yet.',
+      'netix-copilot: approvals need the streaming copilot contract. The agentic poll contract ' +
+        `cannot record ${approved ? 'approval' : 'rejection'} of step ${stepId} on turn ${turnId}.`,
     )
+  }
+
+  // The thread and the turn are the same row here, so a transcript is one GET of the request
+  // resource, rebuilt into the turns the message view already knows how to render.
+  async fetchThread(threadId: string, signal?: AbortSignal): Promise<CopilotTranscriptTurn[]> {
+    const path = fillTemplate(this.endpoints.detail, { turnId: encodeURIComponent(threadId) })
+    const snapshot = await requestJson<AgenticSnapshot>(this.config, path, {
+      ...(signal ? { signal } : {}),
+    })
+    return transcriptFromRequest(snapshot, threadId)
   }
 
   async listThreads(signal?: AbortSignal): Promise<CopilotThread[]> {
@@ -290,29 +279,15 @@ export class AgenticTransport implements CopilotTransport {
     const plan = Array.isArray(snapshot.plan) ? snapshot.plan : []
     if (!cursor.planEmitted && plan.length > 0) {
       cursor.planEmitted = true
-      emit({
-        type: 'plan',
-        steps: plan.filter(isRecord).map((entry, index) => ({
-          id: readStepId(entry, index),
-          title: readStepTitle(entry, index),
-          status: entry.status === 'completed' ? 'ok' : 'pending',
-          ...(typeof entry.tool === 'string' ? { tool: entry.tool } : {}),
-          ...(typeof entry.detail === 'string' ? { detail: entry.detail } : {}),
-        })),
-      })
+      emit({ type: 'plan', steps: planSteps(plan) })
     }
 
     const log = Array.isArray(snapshot.execution_log) ? snapshot.execution_log : []
     for (let index = cursor.logCount; index < log.length; index += 1) {
       const entry = log[index]
       if (!isRecord(entry)) continue
-      const summary = summarizeArguments(entry.arguments)
-      emitStepPair(emit, {
-        id: readStepId(entry, index),
-        title: readStepTitle(entry, index),
-        ...(typeof entry.tool === 'string' ? { tool: entry.tool } : {}),
-        ...(summary === undefined ? {} : { argsSummary: summary }),
-      })
+      // Polling only ever sees finished tool calls, so the timeline gets the completed form.
+      emit({ type: 'step_result', step: logStep(entry, index) })
     }
     cursor.logCount = log.length
 
@@ -344,24 +319,20 @@ export class AgenticTransport implements CopilotTransport {
       emit({ type: 'usage', usage: mapUsage(snapshot.usage) })
     }
 
-    if (snapshot.status === AGENTIC_STATUS.COMPLETED) emit({ type: 'done', turnId })
+    // The summary rides on the terminal event because the whole snapshot is final by then, and
+    // because the decoder accepts eleven event names and would drop a twelfth without a word.
+    const summary = readRunSummary(snapshot)
+    if (snapshot.status === AGENTIC_STATUS.COMPLETED) emit({ type: 'done', turnId, ...summary })
     else if (snapshot.status === AGENTIC_STATUS.ERRORED) {
       emit({
         type: 'error',
         error: { message: snapshot.error ?? 'The copilot run failed.' },
+        ...summary,
       })
     } else if (snapshot.status === AGENTIC_STATUS.CANCELLED) emit({ type: 'cancelled' })
 
     return events
   }
-}
-
-function emitStepPair(
-  emit: (event: EnvelopedEvent['event']) => void,
-  step: { id: string; title: string; tool?: string; argsSummary?: string },
-): void {
-  // Polling only ever sees finished tool calls, so the timeline gets the completed form.
-  emit({ type: 'step_result', step: { ...step, status: 'ok' } })
 }
 
 function isTerminalStatus(status: number | undefined): boolean {
@@ -372,18 +343,6 @@ function isTerminalStatus(status: number | undefined): boolean {
   )
 }
 
-function readStepId(entry: Record<string, unknown>, index: number): string {
-  const callId = entry.call_id ?? entry.callId
-  if (typeof callId === 'string' && callId !== '') return callId
-  return `step-${index}`
-}
-
-function readStepTitle(entry: Record<string, unknown>, index: number): string {
-  if (typeof entry.tool === 'string' && entry.tool !== '') return entry.tool
-  if (typeof entry.detail === 'string' && entry.detail !== '') return entry.detail
-  return `Step ${index + 1}`
-}
-
 function readNumber(scope: Record<string, unknown>, key: string): number | undefined {
   const value = scope[key]
   if (typeof value === 'number' && Number.isFinite(value)) return value
@@ -391,21 +350,6 @@ function readNumber(scope: Record<string, unknown>, key: string): number | undef
     return Number(value)
   }
   return undefined
-}
-
-function mapUsage(usage: Record<string, unknown> | null | undefined): {
-  tokensIn?: number
-  tokensOut?: number
-  calls?: number
-  costUsd?: number
-} {
-  if (!usage) return {}
-  const mapped: { tokensIn?: number; tokensOut?: number; calls?: number; costUsd?: number } = {}
-  if (typeof usage.prompt_tokens === 'number') mapped.tokensIn = usage.prompt_tokens
-  if (typeof usage.completion_tokens === 'number') mapped.tokensOut = usage.completion_tokens
-  if (typeof usage.calls === 'number') mapped.calls = usage.calls
-  if (typeof usage.cost_usd === 'number') mapped.costUsd = usage.cost_usd
-  return mapped
 }
 
 function truncate(value: string, max: number): string {

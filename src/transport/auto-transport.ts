@@ -7,7 +7,13 @@
 
 import type { CopilotThread, SendTurnInput } from '../types'
 import { CopilotHttpError } from './http'
-import type { ConsumeRunOptions, CopilotTransport, CreatedTurn, TransportName } from './types'
+import type {
+  ConsumeRunOptions,
+  CopilotTranscriptTurn,
+  CopilotTransport,
+  CreatedTurn,
+  TransportName,
+} from './types'
 
 export class AutoTransport implements CopilotTransport {
   private resolved: CopilotTransport | undefined
@@ -61,6 +67,13 @@ export class AutoTransport implements CopilotTransport {
 
   listThreads(signal?: AbortSignal): Promise<CopilotThread[]> {
     return (this.resolved ?? this.polling).listThreads(signal)
+  }
+
+  // History reads through whichever transport is live, defaulting to polling for the same reason
+  // listThreads does: before the first send the poll contract is the one known to be deployed.
+  async fetchThread(threadId: string, signal?: AbortSignal): Promise<CopilotTranscriptTurn[]> {
+    const target = this.resolved ?? this.polling
+    return target.fetchThread ? target.fetchThread(threadId, signal) : []
   }
 }
 

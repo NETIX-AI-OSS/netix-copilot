@@ -75,6 +75,65 @@ describe('decodeFrame', () => {
     })
   })
 
+  // ml-engine #316 sends call_id on both halves of a tool call and nothing else that is stable
+  // across the pair, so preferring it is what stops one call rendering as two timeline entries.
+  it('prefers call_id over any other id, so the two step events collapse into one', () => {
+    const started = decodeFrame(
+      frame('step_started', { tool: 'sql', call_id: 'call-1', id: 'evt-77', iteration: 0 }),
+    )
+    const result = decodeFrame(
+      frame('step_result', { tool: 'sql', call_id: 'call-1', id: 'evt-78', status: 'completed' }),
+    )
+    expect(started?.event.type === 'step_started' ? started.event.step.id : '').toBe('call-1')
+    expect(result?.event.type === 'step_result' ? result.event.step.id : '').toBe('call-1')
+  })
+
+  it('finds call_id at the top level when the step body is nested', () => {
+    const out = decodeFrame(frame('step_result', { call_id: 'call-9', step: { tool: 'sql' } }))
+    expect(out?.event).toMatchObject({ step: { id: 'call-9' } })
+  })
+
+  it('synthesizes an id only when the backend supplied none at all', () => {
+    const out = decodeFrame(frame('step_result', { tool: 'sql' }))
+    expect(out?.event).toMatchObject({ step: { id: 'step-1' } })
+  })
+
+  it('decodes the awaiting_approval step ml-engine parks a gated action in', () => {
+    const out = decodeFrame(
+      frame('step_started', {
+        tool: 'service_request_create',
+        call_id: 'call-3',
+        title: 'Create a service request',
+        status: 'awaiting_approval',
+        arguments: '{"asset_id": 5}',
+        iteration: 1,
+        detail: 'Waiting for the user to approve this action.',
+      }),
+    )
+    expect(out?.event).toMatchObject({
+      type: 'step_started',
+      step: {
+        id: 'call-3',
+        title: 'Create a service request',
+        status: 'awaiting_approval',
+        tool: 'service_request_create',
+        argsSummary: '{"asset_id": 5}',
+      },
+    })
+  })
+
+  it('maps the errored status ml-engine sends on a failed step', () => {
+    const out = decodeFrame(frame('step_result', { call_id: 'c1', tool: 'sql', status: 'errored' }))
+    expect(out?.event).toMatchObject({ step: { status: 'error' } })
+  })
+
+  it('keeps the rejected status a declined approval comes back with', () => {
+    const out = decodeFrame(
+      frame('step_result', { call_id: 'c1', tool: 'sql', status: 'rejected', detail: 'declined' }),
+    )
+    expect(out?.event).toMatchObject({ step: { status: 'rejected', detail: 'declined' } })
+  })
+
   it('reads a step nested under a step key', () => {
     const out = decodeFrame(frame('step_started', { step: { id: 's9', tool: 'chart' } }))
     expect(out?.event).toMatchObject({ step: { id: 's9', tool: 'chart' } })
@@ -119,6 +178,13 @@ describe('decodeFrame', () => {
     expect(out?.event).toEqual({ type: 'chart', option, title: 'Load' })
   })
 
+  // ml-engine wraps the option once, as { chart_config: { ... } }.
+  it('decodes the chart_config wrapper ml-engine actually emits', () => {
+    const chartConfig = { series: [{ type: 'bar' }] }
+    const out = decodeFrame(frame('chart', { chart_config: chartConfig }))
+    expect(out?.event).toEqual({ type: 'chart', option: chartConfig })
+  })
+
   it('drops a chart with no option payload', () => {
     expect(decodeFrame(frame('chart', { title: 'nothing' }))).toBeNull()
   })
@@ -126,6 +192,23 @@ describe('decodeFrame', () => {
   it('decodes usage from OpenAI-style token names', () => {
     const out = decodeFrame(frame('usage', { prompt_tokens: 10, completion_tokens: 4 }))
     expect(out?.event).toEqual({ type: 'usage', usage: { tokensIn: 10, tokensOut: 4 } })
+  })
+
+  it('decodes the calls, cost and credit balance ml-engine puts inside usage', () => {
+    const out = decodeFrame(
+      frame('usage', {
+        calls: 2,
+        prompt_tokens: 900,
+        completion_tokens: 40,
+        total_tokens: 940,
+        cost_usd: 0.012,
+        credits_remaining: 88,
+      }),
+    )
+    expect(out?.event).toEqual({
+      type: 'usage',
+      usage: { calls: 2, tokensIn: 900, tokensOut: 40, costUsd: 0.012, creditsRemaining: 88 },
+    })
   })
 
   it('decodes usage nested under a usage key', () => {
@@ -153,6 +236,54 @@ describe('decodeFrame', () => {
       type: 'done',
       turnId: 't1',
     })
+  })
+
+  // The run-level facts ride on the terminal payload, because the decoder accepts eleven event
+  // names and a twelfth would be dropped without a word.
+  it('reads the run summary off done', () => {
+    const out = decodeFrame(
+      frame('done', {
+        turn_id: 't1',
+        status: 'completed',
+        execution_time: 4.25,
+        tools: ['sql_query', 'generate_chart'],
+        result_data: { columns: ['a'], data: [{ a: 1 }] },
+      }),
+    )
+    expect(out?.event).toMatchObject({
+      type: 'done',
+      turnId: 't1',
+      executionMs: 4250,
+      tools: ['sql_query', 'generate_chart'],
+    })
+    expect(out?.event.type === 'done' ? out.event.resultData?.rows : []).toEqual([{ a: 1 }])
+  })
+
+  it('reads the run summary off error too, so a failed turn still reports its timing', () => {
+    const out = decodeFrame(frame('error', { detail: 'nope', execution_time: 2, tools: ['sql'] }))
+    expect(out?.event).toMatchObject({
+      type: 'error',
+      error: { message: 'nope' },
+      executionMs: 2000,
+      tools: ['sql'],
+    })
+  })
+
+  it('prefers an explicit millisecond figure over the seconds one', () => {
+    const out = decodeFrame(frame('done', { execution_ms: 40, execution_time: 9 }))
+    expect(out?.event).toMatchObject({ executionMs: 40 })
+  })
+
+  it('leaves the summary out entirely when the terminal payload carries none', () => {
+    expect(decodeFrame(frame('done', { turn_id: 't1' }))?.event).toEqual({
+      type: 'done',
+      turnId: 't1',
+    })
+  })
+
+  it('ignores a tools list that is empty or not a list of names', () => {
+    expect(decodeFrame(frame('done', { tools: [] }))?.event).toEqual({ type: 'done' })
+    expect(decodeFrame(frame('done', { tools: 'sql' }))?.event).toEqual({ type: 'done' })
   })
 
   it('falls back to a type inside the payload when the SSE event name is generic', () => {

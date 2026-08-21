@@ -162,12 +162,124 @@ describe('SseTransport', () => {
     )
   })
 
-  it('posts an approval decision', async () => {
+  // Verified against ml-engine service/urls.py + views.py on feat/copilot-w2-memory-and-actions:
+  // the DRF router registers `copilot-turn`, and the action url_path is steps/<step_id>/approval.
+  it('posts an approval decision to the route ml-engine registers', async () => {
     const { transport, fetchImpl } = sseTransport([jsonResponse({}, 200)])
     await transport.respondToApproval('t1', 's2', true)
     const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit]
-    expect(url).toBe('https://ml.example.com/api/copilot/turns/t1/steps/s2/approval/')
+    expect(url).toBe('https://ml.example.com/api/copilot-turn/t1/steps/s2/approval/')
     expect(JSON.parse(String(init.body))).toEqual({ approved: true, decision: 'approve' })
+  })
+
+  it('posts a rejection the serializer reads the same way', async () => {
+    const { transport, fetchImpl } = sseTransport([jsonResponse({}, 200)])
+    await transport.respondToApproval('t1', 's2', false)
+    const init = (fetchImpl.mock.calls[0] as [string, RequestInit])[1]
+    expect(JSON.parse(String(init.body))).toEqual({ approved: false, decision: 'reject' })
+  })
+
+  it('cancels through the route the DRF router registers', async () => {
+    const { transport, fetchImpl } = sseTransport([jsonResponse({}, 200)])
+    await transport.cancelTurn('t1')
+    expect((fetchImpl.mock.calls[0] as [string])[0]).toBe(
+      'https://ml.example.com/api/copilot-turn/t1/cancel/',
+    )
+  })
+
+  // The SSE route is served by the ASGI path router ahead of Django, at copilot/turn rather than
+  // the router's copilot-turn, and without a trailing slash.
+  it('tails the stream path ml-engine mounts ahead of Django', async () => {
+    const { transport, fetchImpl } = sseTransport([
+      sseResponse(frames({ event: 'done', data: {} })),
+    ])
+    await collect(transport)
+    expect((fetchImpl.mock.calls[0] as [string])[0]).toBe(
+      'https://ml.example.com/api/copilot/turn/t1/events',
+    )
+  })
+
+  it('lists conversations from the copilot-conversation collection', async () => {
+    const { transport, fetchImpl } = sseTransport([
+      jsonResponse({
+        count: 1,
+        results: [
+          {
+            id: 12,
+            title: 'Why is AHU-1 offline?',
+            last_activity_at: '2026-08-20T10:00:00Z',
+            updated_on: '2026-01-01T00:00:00Z',
+          },
+        ],
+      }),
+    ])
+    const threads = await transport.listThreads()
+    expect((fetchImpl.mock.calls[0] as [string])[0]).toBe(
+      'https://ml.example.com/api/copilot-conversation/',
+    )
+    expect(threads).toEqual([
+      {
+        id: '12',
+        title: 'Why is AHU-1 offline?',
+        updatedAt: Date.parse('2026-08-20T10:00:00Z'),
+      },
+    ])
+  })
+
+  it('rebuilds a thread from its turn list, artifacts and all', async () => {
+    const { transport, fetchImpl } = sseTransport([
+      jsonResponse({
+        count: 2,
+        results: [
+          {
+            id: 8,
+            status: 1,
+            prompt_text: 'first',
+            response_text: 'one',
+            created_on: '2026-08-20T10:00:00Z',
+          },
+          {
+            id: 9,
+            status: 1,
+            prompt_text: 'second',
+            response_text: 'two',
+            created_on: '2026-08-20T10:05:00Z',
+            tools: ['work_order_retrieve'],
+            execution_time: 1.5,
+            chart_config: { series: [{ type: 'pie' }] },
+            execution_log: [
+              {
+                tool: 'work_order_retrieve',
+                call_id: 'c9',
+                output: { columns: ['a'], data: [{ a: 1 }] },
+              },
+            ],
+          },
+        ],
+      }),
+    ])
+    const turns = await transport.fetchThread('3')
+    expect((fetchImpl.mock.calls[0] as [string])[0]).toBe(
+      'https://ml.example.com/api/copilot-turn/?conversation=3',
+    )
+    expect(turns.map((turn) => [turn.prompt, turn.run.text])).toEqual([
+      ['first', 'one'],
+      ['second', 'two'],
+    ])
+    expect(turns[1]?.run.tools).toEqual(['work_order_retrieve'])
+    expect(turns[1]?.run.executionMs).toBe(1500)
+    expect(turns[1]?.run.charts).toHaveLength(1)
+    expect(turns[1]?.run.resultData?.rows).toEqual([{ a: 1 }])
+  })
+
+  it('accepts an unpaginated turn list too', async () => {
+    const { transport } = sseTransport([jsonResponse([{ id: 1, prompt_text: 'x' }])])
+    expect(await transport.fetchThread('3')).toHaveLength(1)
+  })
+
+  it('treats an unexpected thread payload as an empty history', async () => {
+    const { transport } = sseTransport([jsonResponse({ detail: 'nope' })])
+    expect(await transport.fetchThread('3')).toEqual([])
   })
 
   it('swallows a failing cancel, since the run ends server-side anyway', async () => {

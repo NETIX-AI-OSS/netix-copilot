@@ -12,7 +12,7 @@
 //
 // 'auto' probes the streaming route once and remembers the answer.
 
-import type { CopilotThread, EnvelopedEvent, SendTurnInput } from '../types'
+import type { CopilotThread, EnvelopedEvent, RunState, SendTurnInput } from '../types'
 
 export type TransportMode = 'auto' | 'sse' | 'agentic'
 
@@ -36,6 +36,16 @@ export interface ConsumeRunOptions {
   onTransportChange?: (name: TransportName) => void
 }
 
+// One turn rebuilt from stored history, in the same shape a live turn ends up in. Replaying a
+// thread therefore renders through exactly the same components as a run that just finished,
+// including its plan, its charts and its result table.
+export interface CopilotTranscriptTurn {
+  id: string
+  prompt: string
+  createdAt: number
+  run: RunState
+}
+
 export interface CopilotTransport {
   readonly name: TransportName
   createTurn(input: SendTurnInput, signal?: AbortSignal): Promise<CreatedTurn>
@@ -44,6 +54,9 @@ export interface CopilotTransport {
   cancelTurn(turnId: string): Promise<void>
   respondToApproval(turnId: string, stepId: string, approved: boolean): Promise<void>
   listThreads(signal?: AbortSignal): Promise<CopilotThread[]>
+  // Optional so a host transport written against v0.1.0 still satisfies the interface. A
+  // transport that cannot rebuild history simply omits it and selecting a thread starts empty.
+  fetchThread?(threadId: string, signal?: AbortSignal): Promise<CopilotTranscriptTurn[]>
 }
 
 const TERMINAL_EVENTS = new Set(['done', 'error', 'cancelled'])

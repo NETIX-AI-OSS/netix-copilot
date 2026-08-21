@@ -26,9 +26,18 @@ import { applyEnveloped, initialRunState, isRunActive } from './run-store'
 
 export interface CopilotTurnView {
   id: string
+  // What the transcript shows. Authoritative for display, always.
   prompt: string
   createdAt: number
   run: RunState
+  // Set only when the host rewrote the prompt for the wire, so the difference is inspectable
+  // without ever being rendered.
+  wirePrompt?: string
+}
+
+// What actually goes on the wire, when a host needs it to differ from what the user sees.
+export interface CopilotSendOptions {
+  wireText?: string
 }
 
 export interface CopilotEngineState {
@@ -40,6 +49,8 @@ export interface CopilotEngineState {
   online: boolean
   threads: CopilotThread[]
   threadsLoaded: boolean
+  // True while a selected thread's transcript is being fetched.
+  threadLoading: boolean
 }
 
 export interface OnlineSource {
@@ -101,6 +112,7 @@ export class CopilotEngine {
   private unsubscribeOnline: (() => void) | undefined
   private disposed = false
   private localTurnSeq = 0
+  private threadSeq = 0
 
   constructor(options: CopilotEngineOptions) {
     this.options = options
@@ -114,6 +126,7 @@ export class CopilotEngine {
       online: onlineSource.isOnline(),
       threads: [],
       threadsLoaded: false,
+      threadLoading: false,
     }
     this.unsubscribeOnline = onlineSource.subscribe((online) => this.handleConnectivity(online))
   }
@@ -156,20 +169,26 @@ export class CopilotEngine {
     return run !== undefined && isRunActive(run)
   }
 
-  async send(prompt: string, scope?: JsonObject): Promise<void> {
+  // `prompt` is what the transcript shows. `options.wireText` is what the backend receives when
+  // the host had to append something the user must not see -- a scope hint, for instance, which
+  // the agentic contract has no field for.
+  async send(prompt: string, scope?: JsonObject, options?: CopilotSendOptions): Promise<void> {
     const trimmed = prompt.trim()
     if (trimmed === '' || this.snapshot.sending || this.isStreaming) return
 
+    const wireText = options?.wireText?.trim()
+    const wire = wireText === undefined || wireText === '' ? trimmed : wireText
     this.localTurnSeq += 1
     const turn: CopilotTurnView = {
       id: `local-${this.localTurnSeq}`,
       prompt: trimmed,
       createdAt: this.now(),
       run: { ...initialRunState(), status: 'creating' },
+      ...(wire === trimmed ? {} : { wirePrompt: wire }),
     }
     this.update({ turns: [...this.snapshot.turns, turn], sending: true })
 
-    const input: SendTurnInput = { prompt: trimmed }
+    const input: SendTurnInput = { prompt: wire }
     if (this.snapshot.threadId !== undefined) input.threadId = this.snapshot.threadId
     if (scope !== undefined) input.scope = scope
 
@@ -214,16 +233,45 @@ export class CopilotEngine {
 
   startNewThread(): void {
     this.abortActiveRun()
-    this.update({ turns: [], sending: false })
+    // Bumped so a transcript fetch still in flight cannot land on the empty new thread.
+    this.threadSeq += 1
+    this.update({ turns: [], sending: false, threadLoading: false })
     const next = { ...this.snapshot }
     delete next.threadId
     this.snapshot = next
     this.notify()
   }
 
+  // Kept void-returning so a click handler stays a click handler. Await loadThread when the
+  // transcript itself is what the caller is waiting on.
   selectThread(threadId: string): void {
+    void this.loadThread(threadId)
+  }
+
+  // Point the engine at a stored thread and rebuild its history, so a deep link or a sidebar
+  // click restores the plan, the charts and the result tables rather than an empty panel.
+  async loadThread(threadId: string): Promise<void> {
     this.abortActiveRun()
-    this.update({ threadId, turns: [], sending: false })
+    this.threadSeq += 1
+    const token = this.threadSeq
+    const fetchThread = this.options.transport.fetchThread
+    this.update({
+      threadId,
+      turns: [],
+      sending: false,
+      threadLoading: fetchThread !== undefined,
+    })
+    if (fetchThread === undefined) return
+    try {
+      const turns = await fetchThread.call(this.options.transport, threadId)
+      // A later selection, or a send that already started a new turn, owns the panel now.
+      if (token !== this.threadSeq || this.snapshot.turns.length > 0) return
+      this.update({ turns, threadLoading: false })
+    } catch (error) {
+      if (token !== this.threadSeq) return
+      this.options.logger?.warn('netix-copilot: thread transcript unavailable', error)
+      this.update({ threadLoading: false })
+    }
   }
 
   async loadThreads(): Promise<void> {

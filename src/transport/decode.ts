@@ -8,6 +8,7 @@ import type {
   CopilotErrorPayload,
   CopilotEvent,
   CopilotEventName,
+  CopilotRunSummary,
   CopilotUsage,
   EnvelopedEvent,
   JsonObject,
@@ -15,6 +16,7 @@ import type {
   StepStatus,
 } from '../types'
 import { COPILOT_EVENT_NAMES } from '../types'
+import { normalizeResultData } from './result-data'
 import type { SseFrame } from './sse'
 
 const EVENT_NAMES = new Set<string>(COPILOT_EVENT_NAMES)
@@ -39,6 +41,7 @@ const STATUS_ALIASES: Record<string, StepStatus> = {
   done: 'ok',
   failed: 'error',
   failure: 'error',
+  errored: 'error',
   started: 'running',
   in_progress: 'running',
   needs_approval: 'awaiting_approval',
@@ -116,13 +119,25 @@ function summarizeArguments(value: unknown): string | undefined {
   return summary.length > 160 ? `${summary.slice(0, 159)}…` : summary
 }
 
+// ml-engine sends call_id on both step_started and step_result for the same tool call, so it is
+// the only key guaranteed stable across the pair. Preferring it is what collapses the two events
+// into one timeline entry; an id read off the event itself would differ between them.
+const STEP_ID_KEYS = ['call_id', 'callId', 'id', 'step_id', 'stepId', 'index']
+
+function readStepId(source: Record<string, unknown>, nested: Record<string, unknown>): string {
+  for (const key of STEP_ID_KEYS) {
+    const value = asString(pick(nested, [key])) ?? asString(pick(source, [key]))
+    if (value !== undefined && value !== '') return value
+  }
+  // Only reached when the backend supplied no id at all. Synthesis is the last resort because it
+  // is exactly what makes one tool call render twice.
+  return `step-${(syntheticStepCounter += 1)}`
+}
+
 function decodeStep(source: Record<string, unknown>, fallbackStatus: StepStatus): PlanStep {
   const nested = isRecord(source.step) ? source.step : source
   const tool = asString(pick(nested, ['tool', 'tool_name', 'toolName', 'name']))
-  const id =
-    asString(pick(nested, ['id', 'step_id', 'stepId', 'call_id', 'callId', 'index'])) ??
-    // A backend that omits ids still needs stable keys, so synthesize one per decoded step.
-    `step-${(syntheticStepCounter += 1)}`
+  const id = readStepId(source, nested)
   const step: PlanStep = {
     id,
     title:
@@ -167,9 +182,33 @@ function decodeUsage(source: Record<string, unknown>): CopilotUsage {
     pick(nested, ['tokens_out', 'tokensOut', 'completion_tokens', 'output_tokens']),
   )
   if (tokensOut !== undefined) usage.tokensOut = tokensOut
+  const calls = asNumber(pick(nested, ['calls', 'llm_calls', 'llmCalls', 'round_trips']))
+  if (calls !== undefined) usage.calls = calls
+  const costUsd = asNumber(pick(nested, ['cost_usd', 'costUsd', 'cost']))
+  if (costUsd !== undefined) usage.costUsd = costUsd
   const model = asString(pick(nested, ['model', 'model_name']))
   if (model !== undefined) usage.model = model
   return usage
+}
+
+// The run-level facts ml-engine hangs off the terminal payload rather than off an event of
+// their own. Absent keys stay absent: an omitted execution_time is unknown, not zero.
+function decodeRunSummary(source: Record<string, unknown>): CopilotRunSummary {
+  const summary: CopilotRunSummary = {}
+  const tools = pick(source, ['tools', 'tools_used', 'toolsUsed'])
+  if (Array.isArray(tools)) {
+    const names = tools.map(asString).filter((name): name is string => name !== undefined)
+    if (names.length > 0) summary.tools = names
+  }
+  const executionMs = asNumber(pick(source, ['execution_ms', 'executionMs', 'duration_ms']))
+  if (executionMs !== undefined) summary.executionMs = executionMs
+  else {
+    const seconds = asNumber(pick(source, ['execution_time', 'executionTime', 'duration']))
+    if (seconds !== undefined) summary.executionMs = Math.round(seconds * 1000)
+  }
+  const resultData = normalizeResultData(pick(source, ['result_data', 'resultData']))
+  if (resultData !== undefined) summary.resultData = resultData
+  return summary
 }
 
 function decodeError(source: Record<string, unknown>): CopilotErrorPayload {
@@ -230,7 +269,18 @@ function toEvent(name: CopilotEventName, payload: Record<string, unknown>): Copi
       return { type: 'message_delta', text }
     }
     case 'chart': {
-      const option = asJsonObject(pick(payload, ['option', 'options', 'chart', 'config', 'spec']))
+      // ml-engine wraps the ECharts option once, as { chart_config: { ... } }.
+      const option = asJsonObject(
+        pick(payload, [
+          'chart_config',
+          'chartConfig',
+          'option',
+          'options',
+          'chart',
+          'config',
+          'spec',
+        ]),
+      )
       if (option === undefined) return null
       const event: CopilotEvent = { type: 'chart', option }
       const title = asString(pick(payload, ['title', 'name']))
@@ -242,13 +292,13 @@ function toEvent(name: CopilotEventName, payload: Record<string, unknown>): Copi
     case 'usage':
       return { type: 'usage', usage: decodeUsage(payload) }
     case 'done': {
-      const event: CopilotEvent = { type: 'done' }
+      const event: CopilotEvent = { type: 'done', ...decodeRunSummary(payload) }
       const turnId = asString(pick(payload, ['turn_id', 'turnId', 'id']))
       if (turnId !== undefined) event.turnId = turnId
       return event
     }
     case 'error':
-      return { type: 'error', error: decodeError(payload) }
+      return { type: 'error', error: decodeError(payload), ...decodeRunSummary(payload) }
     case 'cancelled': {
       const event: CopilotEvent = { type: 'cancelled' }
       const reason = asString(pick(payload, ['reason', 'message', 'detail']))

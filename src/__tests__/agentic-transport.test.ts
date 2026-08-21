@@ -292,6 +292,116 @@ describe('agentic cursor', () => {
   })
 })
 
+describe('AgenticTransport run summary', () => {
+  it('hangs the tools, the timing and the result table off the done event', async () => {
+    const { transport } = transportWith([
+      jsonResponse({
+        id: 101,
+        status: AGENTIC_STATUS.COMPLETED,
+        response_text: 'Ali closed the most.',
+        tools: ['sql_query'],
+        execution_time: 4.25,
+        execution_log: [
+          {
+            tool: 'sql_query',
+            call_id: 'c1',
+            arguments: { limit: 5 },
+            output: {
+              columns: ['technician', 'closed'],
+              data: [{ technician: 'Ali', closed: 12 }],
+            },
+          },
+        ],
+      }),
+    ])
+    const done = (await collect(transport)).find((entry) => entry.event.type === 'done')
+    expect(done?.event).toMatchObject({ tools: ['sql_query'], executionMs: 4250 })
+    expect(done?.event.type === 'done' ? done.event.resultData?.rows : []).toEqual([
+      { technician: 'Ali', closed: 12 },
+    ])
+  })
+
+  it('hangs the same summary off an errored run', async () => {
+    const { transport } = transportWith([
+      jsonResponse({
+        status: AGENTIC_STATUS.ERRORED,
+        error: 'Monthly chat credit limit reached.',
+        tools: ['sql_query'],
+        execution_time: 2,
+      }),
+    ])
+    const failure = (await collect(transport)).find((entry) => entry.event.type === 'error')
+    expect(failure?.event).toMatchObject({
+      error: { message: 'Monthly chat credit limit reached.' },
+      tools: ['sql_query'],
+      executionMs: 2000,
+    })
+  })
+
+  // ml-engine computes credits_remaining live and blends it into usage on both transports.
+  it('carries the credit balance out of usage instead of dropping it', async () => {
+    const { transport } = transportWith([
+      jsonResponse({
+        status: AGENTIC_STATUS.COMPLETED,
+        usage: { calls: 1, prompt_tokens: 10, completion_tokens: 2, credits_remaining: 99 },
+      }),
+    ])
+    const usage = (await collect(transport)).find((entry) => entry.event.type === 'usage')
+    expect(usage?.event).toEqual({
+      type: 'usage',
+      usage: { calls: 1, tokensIn: 10, tokensOut: 2, creditsRemaining: 99 },
+    })
+  })
+
+  it('renders a failed plan step as failed rather than as one still waiting', async () => {
+    const { transport } = transportWith([
+      jsonResponse({
+        status: AGENTIC_STATUS.COMPLETED,
+        plan: [
+          { tool: 'a', call_id: 'p1', status: 'errored', detail: 'boom' },
+          { tool: 'b', call_id: 'p2', status: 'in_progress' },
+        ],
+      }),
+    ])
+    const plan = (await collect(transport)).find((entry) => entry.event.type === 'plan')
+    expect(plan?.event.type === 'plan' ? plan.event.steps.map((step) => step.status) : []).toEqual([
+      'error',
+      'running',
+    ])
+  })
+})
+
+describe('AgenticTransport.fetchThread', () => {
+  it('rebuilds a stored request into replayable turns', async () => {
+    const { transport, fetchImpl } = transportWith([
+      jsonResponse({
+        id: 101,
+        status: AGENTIC_STATUS.COMPLETED,
+        prompt_text: 'top 5 technicians',
+        response_text: 'Ali closed the most.',
+        created_on: '2026-08-20T10:00:00Z',
+        messages: [
+          { role: 'user', content: 'top 5 technicians' },
+          { role: 'assistant', content: 'Ali closed the most.' },
+        ],
+        chart_available: true,
+        chart_config: { series: [{ type: 'bar' }] },
+        tools: ['sql_query'],
+        execution_time: 3,
+      }),
+    ])
+    const turns = await transport.fetchThread('101')
+    expect((fetchImpl.mock.calls[0] as [string])[0]).toBe(
+      'https://ml.example.com/api/agentic-ml-request/101/',
+    )
+    expect(turns).toHaveLength(1)
+    expect(turns[0]?.prompt).toBe('top 5 technicians')
+    expect(turns[0]?.run.text).toBe('Ali closed the most.')
+    expect(turns[0]?.run.charts).toHaveLength(1)
+    expect(turns[0]?.run.tools).toEqual(['sql_query'])
+  })
+})
+
 describe('AgenticTransport unsupported operations', () => {
   it('has no cancel route to call, so cancelling is a local no-op', async () => {
     const { transport, fetchImpl } = transportWith([])
@@ -301,7 +411,9 @@ describe('AgenticTransport unsupported operations', () => {
 
   it('rejects approvals loudly rather than pretending they were recorded', async () => {
     const { transport } = transportWith([])
-    await expect(transport.respondToApproval()).rejects.toThrow(/does not serve them yet/)
+    await expect(transport.respondToApproval('9', 'call-1', true)).rejects.toThrow(
+      /approvals need the streaming copilot contract/,
+    )
   })
 
   it('lists prior requests as threads', async () => {

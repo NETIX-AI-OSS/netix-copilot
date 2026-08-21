@@ -1,7 +1,14 @@
 // The pure reduction from events to renderable run state.
 // Kept free of React and of the network so it can be tested as a table of event sequences.
 
-import type { CopilotEvent, CopilotUsage, EnvelopedEvent, PlanStep, RunState } from '../types'
+import type {
+  CopilotEvent,
+  CopilotRunSummary,
+  CopilotUsage,
+  EnvelopedEvent,
+  PlanStep,
+  RunState,
+} from '../types'
 
 export function initialRunState(): RunState {
   return {
@@ -25,6 +32,16 @@ function upsertStep(steps: PlanStep[], incoming: PlanStep): PlanStep[] {
 
 function mergeUsage(current: CopilotUsage | undefined, incoming: CopilotUsage): CopilotUsage {
   return { ...current, ...incoming }
+}
+
+// Only the keys the terminal payload actually carried, so a summary that omits execution_time
+// does not blank one an earlier event already recorded.
+function applySummary(summary: CopilotRunSummary): Partial<RunState> {
+  const patch: Partial<RunState> = {}
+  if (summary.tools !== undefined) patch.tools = summary.tools
+  if (summary.executionMs !== undefined) patch.executionMs = summary.executionMs
+  if (summary.resultData !== undefined) patch.resultData = summary.resultData
+  return patch
 }
 
 export function applyEvent(state: RunState, event: CopilotEvent): RunState {
@@ -73,9 +90,15 @@ export function applyEvent(state: RunState, event: CopilotEvent): RunState {
     case 'usage':
       return { ...state, usage: mergeUsage(state.usage, event.usage) }
     case 'done':
-      return { ...state, status: 'done', offline: false }
+      return { ...state, ...applySummary(event), status: 'done', offline: false }
     case 'error':
-      return { ...state, status: 'error', error: event.error, offline: false }
+      return {
+        ...state,
+        ...applySummary(event),
+        status: 'error',
+        error: event.error,
+        offline: false,
+      }
     case 'cancelled':
       return { ...state, status: 'cancelled', offline: false }
     default:

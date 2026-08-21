@@ -10,9 +10,10 @@ export interface UsageFooterProps {
   model?: string
 }
 
-// Every figure here is conditional. ml-engine reports token counts and cost but keeps its
-// monthly chat-credit balance in logs only, so the credits line stays hidden rather than
-// rendering a misleading zero until the backend returns it.
+// Every figure here is conditional, including the credit balance. ml-engine returns
+// credits_remaining inside `usage` on both the SSE event and the REST payload, computed live from
+// UserMLConfiguration and deliberately not persisted -- so it is present on a fresh answer and
+// absent on a replayed one. Absent means unknown, which is why it hides rather than showing zero.
 export function UsageFooter({ usage, transport, model }: UsageFooterProps): ReactNode {
   const { t } = useCopilotAdapters()
   const items: string[] = []

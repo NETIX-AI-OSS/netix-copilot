@@ -1,15 +1,26 @@
-// The streaming transport, built against the copilot blueprint's turn/stream contract.
+// The streaming transport.
 //
-// Status as of 2026-08-21: ml-engine serves no such route. This transport is written, tested
-// and shipped so the host apps need no change when the backend lands, and `auto` degrades to
-// the agentic poll transport in the meantime.
+// Re-checked against ml-engine's feat/copilot-w2-memory-and-actions branch on 2026-08-21. The
+// stream, cancel, approval and thread routes all exist and the defaults below are now the paths
+// ml-engine actually registers. The one route that does not exist is the create: there is no
+// POST /api/copilot/turns/, because a turn is opened through the agentic request resource and
+// its response carries the turn_id to tail. `auto` therefore still degrades to the poll
+// transport on the first send, which is why that default is left pointing at the blueprint path
+// rather than at a route that would half-work.
 
 import type { CopilotThread, JsonObject, SendTurnInput } from '../types'
 import { decodeFrame, decodePolledEvent } from './decode'
 import type { HttpConfig } from './http'
 import { buildHeaders, CopilotHttpError, joinUrl, request, requestJson } from './http'
 import { readSseStream, SseParser } from './sse'
-import type { ConsumeRunOptions, CopilotTransport, CreatedTurn, TransportName } from './types'
+import { turnFromRow } from './transcript'
+import type {
+  ConsumeRunOptions,
+  CopilotTranscriptTurn,
+  CopilotTransport,
+  CreatedTurn,
+  TransportName,
+} from './types'
 import {
   fillTemplate,
   isTerminalEvent,
@@ -25,16 +36,20 @@ export interface SseEndpoints {
   cancelTurn: string
   approval: string
   threads: string
+  threadTurns: string
 }
 
-// Django REST style, trailing slashes included, matching the rest of the fleet.
+// The paths ml-engine registers, verified against service/urls.py and service/copilot/sse.py.
+// Note the two spellings: the DRF router registers `copilot-turn`, while the SSE endpoint is
+// served ahead of Django by the ASGI path router at `copilot/turn` with no trailing slash.
 export const DEFAULT_SSE_ENDPOINTS: SseEndpoints = {
   createTurn: '/api/copilot/turns/',
-  streamTurn: '/api/copilot/turns/{turnId}/stream/',
-  pollTurn: '/api/copilot/turns/{turnId}/events/',
-  cancelTurn: '/api/copilot/turns/{turnId}/cancel/',
-  approval: '/api/copilot/turns/{turnId}/steps/{stepId}/approval/',
-  threads: '/api/copilot/threads/',
+  streamTurn: '/api/copilot/turn/{turnId}/events',
+  pollTurn: '/api/copilot-turn/{turnId}/events/',
+  cancelTurn: '/api/copilot-turn/{turnId}/cancel/',
+  approval: '/api/copilot-turn/{turnId}/steps/{stepId}/approval/',
+  threads: '/api/copilot-conversation/',
+  threadTurns: '/api/copilot-turn/?conversation={threadId}',
 }
 
 export interface SseTransportConfig extends HttpConfig {
@@ -106,11 +121,31 @@ export class SseTransport implements CopilotTransport {
     }).catch(() => undefined)
   }
 
+  // ml-engine accepts either key and prefers `approved` when both arrive; sending both keeps the
+  // request readable in a log and tolerant of whichever half a proxy strips.
   async respondToApproval(turnId: string, stepId: string, approved: boolean): Promise<void> {
     await request(this.config, fillTemplate(this.endpoints.approval, { turnId, stepId }), {
       method: 'POST',
       body: { approved, decision: approved ? 'approve' : 'reject' },
     })
+  }
+
+  // A thread's history is its turn list. Every row already carries the plan, the execution log,
+  // the chart and the timing, so a replayed turn renders through the same components as a live
+  // one instead of degrading to plain text.
+  async fetchThread(threadId: string, signal?: AbortSignal): Promise<CopilotTranscriptTurn[]> {
+    const path = fillTemplate(this.endpoints.threadTurns, {
+      threadId: encodeURIComponent(threadId),
+    })
+    const payload = await requestJson<unknown>(this.config, path, {
+      ...(signal ? { signal } : {}),
+    })
+    const rows = Array.isArray(payload)
+      ? payload
+      : isRecord(payload) && Array.isArray(payload.results)
+        ? payload.results
+        : []
+    return rows.filter(isRecord).map((row, index) => turnFromRow(row, threadId, index))
   }
 
   async listThreads(signal?: AbortSignal): Promise<CopilotThread[]> {
@@ -123,14 +158,21 @@ export class SseTransport implements CopilotTransport {
         ? payload.results
         : []
     return rows.filter(isRecord).map((row) => {
-      const updatedRaw = readString(row, ['updated_at', 'updatedAt', 'created_at'])
+      const updatedRaw = readString(row, [
+        'last_activity_at',
+        'updated_on',
+        'updated_at',
+        'updatedAt',
+        'created_on',
+        'created_at',
+      ])
       const parsed = updatedRaw === undefined ? Number.NaN : Date.parse(updatedRaw)
       const thread: CopilotThread = {
         id: readString(row, ['id', 'thread_id', 'threadId']) ?? '',
         title: readString(row, ['title', 'name', 'summary']) ?? 'Untitled',
         updatedAt: Number.isFinite(parsed) ? parsed : Date.now(),
       }
-      const count = row.message_count ?? row.messageCount
+      const count = row.message_count ?? row.messageCount ?? row.turn_count
       if (typeof count === 'number') thread.messageCount = count
       return thread
     })

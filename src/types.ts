@@ -47,9 +47,8 @@ export interface PlanStep {
 
 export interface CopilotUsage {
   creditsUsed?: number
-  // Only ever populated when the backend sends it. ml-engine currently keeps its monthly chat
-  // credit balance in logs and never returns it, so the usage footer hides the figure instead
-  // of showing a zero.
+  // ml-engine computes this live and never persists it, so it is present on a fresh answer and
+  // absent when a stored turn is replayed. Undefined means unknown, never zero.
   creditsRemaining?: number
   tokensIn?: number
   tokensOut?: number
@@ -57,6 +56,26 @@ export interface CopilotUsage {
   calls?: number
   costUsd?: number
   model?: string
+}
+
+// A tabular result the backend returns alongside the prose answer.
+// The wire shape varies -- {columns, data}, {columns, rows}, a bare array of row objects or a
+// scalar -- so it is normalized to one shape here and the untouched payload is kept beside it.
+export interface CopilotResultData {
+  columns: string[]
+  rows: JsonObject[]
+  raw: JsonValue
+}
+
+// Run-level facts the backend reports with the terminal payload rather than as their own event.
+// They ride on `done` and `error` because the decoder accepts eleven event names and would drop
+// a twelfth silently.
+export interface CopilotRunSummary {
+  // Tool names the run actually used, as ml-engine reports them on the request resource.
+  tools?: string[]
+  // Wall-clock time for the whole run. ml-engine reports `execution_time` in seconds.
+  executionMs?: number
+  resultData?: CopilotResultData
 }
 
 export interface CopilotErrorPayload {
@@ -110,12 +129,12 @@ export interface UsageEvent {
   usage: CopilotUsage
 }
 
-export interface DoneEvent {
+export interface DoneEvent extends CopilotRunSummary {
   type: 'done'
   turnId?: string
 }
 
-export interface ErrorEvent {
+export interface ErrorEvent extends CopilotRunSummary {
   type: 'error'
   error: CopilotErrorPayload
 }
@@ -180,6 +199,11 @@ export interface RunState {
   text: string
   charts: CopilotChart[]
   usage?: CopilotUsage
+  // Populated from the terminal payload, so a finished turn can show what it used and how long
+  // it took without the host refetching the request resource.
+  tools?: string[]
+  executionMs?: number
+  resultData?: CopilotResultData
   error?: CopilotErrorPayload
   lastEventId?: string
   // True while the reader is intentionally suspended because the browser went offline.

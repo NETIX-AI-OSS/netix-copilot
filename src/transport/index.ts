@@ -65,12 +65,16 @@ export { AutoTransport } from './auto-transport'
 export { decodeFrame, decodePolledEvent } from './decode'
 export type { AuthTokenProvider, CopilotFetch, HttpConfig } from './http'
 export { CopilotHttpError } from './http'
+export { formatResultCell, normalizeResultData } from './result-data'
 export type { SseFrame } from './sse'
 export { readSseStream, SseParser } from './sse'
 export type { SseEndpoints, SseTransportConfig } from './sse-transport'
 export { DEFAULT_SSE_ENDPOINTS, SseTransport } from './sse-transport'
+export type { CopilotRunRow } from './transcript'
+export { transcriptFromRequest, turnFromRow } from './transcript'
 export type {
   ConsumeRunOptions,
+  CopilotTranscriptTurn,
   CopilotTransport,
   CreatedTurn,
   TransportMode,
