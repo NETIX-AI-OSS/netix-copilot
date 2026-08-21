@@ -1,4 +1,4 @@
-import type { CopilotThread, EnvelopedEvent, SendTurnInput } from '../types';
+import type { CopilotThread, EnvelopedEvent, RunState, SendTurnInput } from '../types';
 export type TransportMode = 'auto' | 'sse' | 'agentic';
 export type TransportName = 'sse' | 'agentic';
 export interface CreatedTurn {
@@ -16,6 +16,12 @@ export interface ConsumeRunOptions {
     pollUrl?: string;
     onTransportChange?: (name: TransportName) => void;
 }
+export interface CopilotTranscriptTurn {
+    id: string;
+    prompt: string;
+    createdAt: number;
+    run: RunState;
+}
 export interface CopilotTransport {
     readonly name: TransportName;
     createTurn(input: SendTurnInput, signal?: AbortSignal): Promise<CreatedTurn>;
@@ -23,6 +29,7 @@ export interface CopilotTransport {
     cancelTurn(turnId: string): Promise<void>;
     respondToApproval(turnId: string, stepId: string, approved: boolean): Promise<void>;
     listThreads(signal?: AbortSignal): Promise<CopilotThread[]>;
+    fetchThread?(threadId: string, signal?: AbortSignal): Promise<CopilotTranscriptTurn[]>;
 }
 export declare function isTerminalEvent(enveloped: EnvelopedEvent): boolean;
 export declare class NotStreamableError extends Error {

@@ -10,7 +10,26 @@
 // no chart library adapter beyond a render callback, so ECharts is never bundled: each app keeps
 // its own themed wrapper and the SDK just hands it option JSON.
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.resolveCopilotPrompt = resolveCopilotPrompt;
 exports.buildScope = buildScope;
+// Split one typed prompt into the text to display and the text to send. Always trims, and never
+// lets a transform blank the transcript: an empty display falls back to what the user typed.
+function resolveCopilotPrompt(prompt, transform, context) {
+    const trimmed = prompt.trim();
+    if (transform === undefined || trimmed === '')
+        return { display: trimmed, wire: trimmed };
+    const result = transform(trimmed, context);
+    if (typeof result === 'string') {
+        const wire = result.trim();
+        return { display: trimmed, wire: wire === '' ? trimmed : wire };
+    }
+    const wire = result.wire.trim();
+    const display = (result.display ?? trimmed).trim();
+    return {
+        display: display === '' ? trimmed : display,
+        wire: wire === '' ? trimmed : wire,
+    };
+}
 // Turn the host page context into the opaque scope object sent with each turn.
 function buildScope(pageContext) {
     const scope = {

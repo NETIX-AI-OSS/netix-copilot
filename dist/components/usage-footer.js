@@ -3,9 +3,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.UsageFooter = UsageFooter;
 const jsx_runtime_1 = require("react/jsx-runtime");
 const context_1 = require("../adapters/context");
-// Every figure here is conditional. ml-engine reports token counts and cost but keeps its
-// monthly chat-credit balance in logs only, so the credits line stays hidden rather than
-// rendering a misleading zero until the backend returns it.
+// Every figure here is conditional, including the credit balance. ml-engine returns
+// credits_remaining inside `usage` on both the SSE event and the REST payload, computed live from
+// UserMLConfiguration and deliberately not persisted -- so it is present on a fresh answer and
+// absent on a replayed one. Absent means unknown, which is why it hides rather than showing zero.
 function UsageFooter({ usage, transport, model }) {
     const { t } = (0, context_1.useCopilotAdapters)();
     const items = [];

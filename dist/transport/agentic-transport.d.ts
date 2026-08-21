@@ -1,13 +1,7 @@
 import type { CopilotThread, SendTurnInput } from '../types';
 import type { HttpConfig } from './http';
-import type { ConsumeRunOptions, CopilotTransport, CreatedTurn, TransportName } from './types';
-export declare const AGENTIC_STATUS: {
-    readonly PENDING: 0;
-    readonly COMPLETED: 1;
-    readonly ERRORED: 2;
-    readonly PROCESSING: 3;
-    readonly CANCELLED: 4;
-};
+import type { ConsumeRunOptions, CopilotTranscriptTurn, CopilotTransport, CreatedTurn, TransportName } from './types';
+export { AGENTIC_STATUS } from './transcript';
 export interface AgenticEndpoints {
     collection: string;
     detail: string;
@@ -45,9 +39,9 @@ export declare class AgenticTransport implements CopilotTransport {
     constructor(config: AgenticTransportConfig);
     createTurn(input: SendTurnInput, signal?: AbortSignal): Promise<CreatedTurn>;
     cancelTurn(): Promise<void>;
-    respondToApproval(): Promise<void>;
+    respondToApproval(turnId: string, stepId: string, approved: boolean): Promise<void>;
+    fetchThread(threadId: string, signal?: AbortSignal): Promise<CopilotTranscriptTurn[]>;
     listThreads(signal?: AbortSignal): Promise<CopilotThread[]>;
     consumeRun(options: ConsumeRunOptions): Promise<void>;
     private diff;
 }
-export {};

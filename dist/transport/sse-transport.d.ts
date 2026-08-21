@@ -1,6 +1,6 @@
 import type { CopilotThread, SendTurnInput } from '../types';
 import type { HttpConfig } from './http';
-import type { ConsumeRunOptions, CopilotTransport, CreatedTurn, TransportName } from './types';
+import type { ConsumeRunOptions, CopilotTranscriptTurn, CopilotTransport, CreatedTurn, TransportName } from './types';
 export interface SseEndpoints {
     createTurn: string;
     streamTurn: string;
@@ -8,6 +8,7 @@ export interface SseEndpoints {
     cancelTurn: string;
     approval: string;
     threads: string;
+    threadTurns: string;
 }
 export declare const DEFAULT_SSE_ENDPOINTS: SseEndpoints;
 export interface SseTransportConfig extends HttpConfig {
@@ -24,6 +25,7 @@ export declare class SseTransport implements CopilotTransport {
     createTurn(input: SendTurnInput, signal?: AbortSignal): Promise<CreatedTurn>;
     cancelTurn(turnId: string): Promise<void>;
     respondToApproval(turnId: string, stepId: string, approved: boolean): Promise<void>;
+    fetchThread(threadId: string, signal?: AbortSignal): Promise<CopilotTranscriptTurn[]>;
     listThreads(signal?: AbortSignal): Promise<CopilotThread[]>;
     consumeRun(options: ConsumeRunOptions): Promise<void>;
     private consumeByStreaming;

@@ -18,6 +18,16 @@ const MIN_WIDTH = 320;
 const MAX_WIDTH = 720;
 const DEFAULT_WIDTH = 420;
 const KEYBOARD_STEP = 24;
+// Returns undefined when nothing is stored, so an absent key is distinguishable from a stored
+// `false` and `defaultOpen` only applies to the former.
+function readStoredOpen() {
+    const stored = readStored(OPEN_STORAGE_KEY);
+    if (stored === 'true')
+        return true;
+    if (stored === 'false')
+        return false;
+    return undefined;
+}
 function readStored(key) {
     try {
         return window.localStorage.getItem(key);
@@ -41,19 +51,21 @@ function clampWidth(width, fallback = DEFAULT_WIDTH) {
         return fallback;
     return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(width)));
 }
-function CopilotDock({ headerActions, defaultOpen, showThreads = true, container, }) {
+// Open-state precedence, in order: a supplied `open` prop, then the stored value, then
+// `defaultOpen`, then closed.
+function CopilotDock({ headerActions, open: openProp, onOpenChange, defaultOpen, showThreads = true, showLauncher = true, container, }) {
     const { t, theme } = (0, context_1.useCopilotAdapters)();
     const engine = (0, context_1.useCopilotEngine)();
     const state = (0, context_1.useCopilotState)();
     const enabled = (0, context_1.useCopilotEnabled)();
-    const [open, setOpen] = (0, react_1.useState)(() => {
-        const stored = readStored(OPEN_STORAGE_KEY);
-        if (stored === 'true')
-            return true;
-        if (stored === 'false')
-            return false;
-        return defaultOpen ?? false;
-    });
+    const controlled = openProp !== undefined;
+    const [uncontrolledOpen, setUncontrolledOpen] = (0, react_1.useState)(() => readStoredOpen() ?? defaultOpen ?? false);
+    const open = controlled ? openProp : uncontrolledOpen;
+    const setOpen = (0, react_1.useCallback)((next) => {
+        if (!controlled)
+            setUncontrolledOpen(next);
+        onOpenChange?.(next);
+    }, [controlled, onOpenChange]);
     const [width, setWidth] = (0, react_1.useState)(() => {
         const stored = Number(readStored(WIDTH_STORAGE_KEY));
         return Number.isFinite(stored) && stored > 0 ? clampWidth(stored) : DEFAULT_WIDTH;
@@ -64,8 +76,12 @@ function CopilotDock({ headerActions, defaultOpen, showThreads = true, container
         (0, styles_1.injectCopilotStyles)();
     }, []);
     (0, react_1.useEffect)(() => {
-        writeStored(OPEN_STORAGE_KEY, open ? 'true' : 'false');
-    }, [open]);
+        // Persistence belongs to the uncontrolled dock only. A controlled host owns the state and
+        // would otherwise find its own value overwritten by a stale one on the next mount.
+        if (controlled)
+            return;
+        writeStored(OPEN_STORAGE_KEY, uncontrolledOpen ? 'true' : 'false');
+    }, [controlled, uncontrolledOpen]);
     (0, react_1.useEffect)(() => {
         writeStored(WIDTH_STORAGE_KEY, String(width));
     }, [width]);
@@ -105,7 +121,7 @@ function CopilotDock({ headerActions, defaultOpen, showThreads = true, container
                         setWidth((current) => clampWidth(current + KEYBOARD_STEP));
                     if (event.key === 'ArrowRight')
                         setWidth((current) => clampWidth(current - KEYBOARD_STEP));
-                } }), (0, jsx_runtime_1.jsxs)("header", { className: 'nxcp-header', children: [(0, jsx_runtime_1.jsx)("span", { className: 'nxcp-title', children: t('copilot.dock.title') }), headerActions, (0, jsx_runtime_1.jsx)("button", { type: 'button', className: 'nxcp-icon-button', onClick: () => engine.startNewThread(), disabled: streaming, children: t('copilot.dock.new') }), (0, jsx_runtime_1.jsx)("button", { type: 'button', className: 'nxcp-icon-button', onClick: () => setOpen(false), "aria-label": t('copilot.dock.close'), children: '×' })] }), !state.online ? (0, jsx_runtime_1.jsx)("div", { className: 'nxcp-banner', children: t('copilot.status.offline') }) : null, showThreads ? (0, jsx_runtime_1.jsx)(thread_list_1.ThreadList, {}) : null, (0, jsx_runtime_1.jsx)("div", { className: 'nxcp-body', ref: bodyRef, children: state.turns.length === 0 ? ((0, jsx_runtime_1.jsx)("p", { className: 'nxcp-empty', children: t('copilot.dock.empty') })) : (state.turns.map((turn) => (0, jsx_runtime_1.jsx)(message_view_1.MessageView, { turn: turn }, turn.id))) }), (0, jsx_runtime_1.jsx)(composer_1.Composer, { autoFocus: true }), (0, jsx_runtime_1.jsx)(usage_footer_1.UsageFooter, { ...(run?.usage ? { usage: run.usage } : {}), ...(state.transport ? { transport: state.transport } : {}), ...(run?.model ? { model: run.model } : {}) })] })) : ((0, jsx_runtime_1.jsx)("button", { type: 'button', className: 'nxcp-root nxcp-launcher', style: style, onClick: () => setOpen(true), children: t('copilot.dock.open') }));
+                } }), (0, jsx_runtime_1.jsxs)("header", { className: 'nxcp-header', children: [(0, jsx_runtime_1.jsx)("span", { className: 'nxcp-title', children: t('copilot.dock.title') }), headerActions, (0, jsx_runtime_1.jsx)("button", { type: 'button', className: 'nxcp-icon-button', onClick: () => engine.startNewThread(), disabled: streaming, children: t('copilot.dock.new') }), (0, jsx_runtime_1.jsx)("button", { type: 'button', className: 'nxcp-icon-button', onClick: () => setOpen(false), "aria-label": t('copilot.dock.close'), children: '×' })] }), !state.online ? (0, jsx_runtime_1.jsx)("div", { className: 'nxcp-banner', children: t('copilot.status.offline') }) : null, showThreads ? (0, jsx_runtime_1.jsx)(thread_list_1.ThreadList, {}) : null, (0, jsx_runtime_1.jsx)("div", { className: 'nxcp-body', ref: bodyRef, children: state.threadLoading ? ((0, jsx_runtime_1.jsx)("p", { className: 'nxcp-empty', children: t('copilot.threads.restoring') })) : state.turns.length === 0 ? ((0, jsx_runtime_1.jsx)("p", { className: 'nxcp-empty', children: t('copilot.dock.empty') })) : (state.turns.map((turn) => (0, jsx_runtime_1.jsx)(message_view_1.MessageView, { turn: turn }, turn.id))) }), (0, jsx_runtime_1.jsx)(composer_1.Composer, { autoFocus: true }), (0, jsx_runtime_1.jsx)(usage_footer_1.UsageFooter, { ...(run?.usage ? { usage: run.usage } : {}), ...(state.transport ? { transport: state.transport } : {}), ...(run?.model ? { model: run.model } : {}) })] })) : showLauncher ? ((0, jsx_runtime_1.jsx)("button", { type: 'button', className: 'nxcp-root nxcp-launcher', style: style, onClick: () => setOpen(true), children: t('copilot.dock.open') })) : null;
     if (!target)
         return null;
     return (0, react_dom_1.createPortal)(content, target);

@@ -1,5 +1,5 @@
 import type { CopilotThread, SendTurnInput } from '../types';
-import type { ConsumeRunOptions, CopilotTransport, CreatedTurn, TransportName } from './types';
+import type { ConsumeRunOptions, CopilotTranscriptTurn, CopilotTransport, CreatedTurn, TransportName } from './types';
 export declare class AutoTransport implements CopilotTransport {
     private readonly streaming;
     private readonly polling;
@@ -12,4 +12,5 @@ export declare class AutoTransport implements CopilotTransport {
     cancelTurn(turnId: string): Promise<void>;
     respondToApproval(turnId: string, stepId: string, approved: boolean): Promise<void>;
     listThreads(signal?: AbortSignal): Promise<CopilotThread[]>;
+    fetchThread(threadId: string, signal?: AbortSignal): Promise<CopilotTranscriptTurn[]>;
 }

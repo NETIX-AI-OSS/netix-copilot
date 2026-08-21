@@ -20,6 +20,16 @@ export interface CopilotPageContext {
     state?: JsonObject;
 }
 export type TranslateFn = (key: string, vars?: Record<string, string | number>) => string;
+export interface CopilotPrompt {
+    wire: string;
+    display?: string;
+}
+export interface CopilotPromptContext {
+    pageContext: CopilotPageContext;
+    threadId?: string;
+    isFirstMessage: boolean;
+}
+export type CopilotPromptTransform = (prompt: string, context: CopilotPromptContext) => string | CopilotPrompt;
 export interface CopilotThemeTokens {
     colorScheme?: 'light' | 'dark';
     surface?: string;
@@ -51,10 +61,15 @@ export interface CopilotAdapters {
     t: TranslateFn;
     theme: CopilotThemeTokens;
     renderMarkdown?: (markdown: string, context: CopilotMarkdownRenderContext) => ReactNode;
+    transformPrompt?: CopilotPromptTransform;
     onNavigate?: (href: string) => void;
     logger?: {
         warn: (message: string, detail?: unknown) => void;
         error: (message: string, detail?: unknown) => void;
     };
 }
+export declare function resolveCopilotPrompt(prompt: string, transform: CopilotPromptTransform | undefined, context: CopilotPromptContext): {
+    display: string;
+    wire: string;
+};
 export declare function buildScope(pageContext: CopilotPageContext): JsonObject;

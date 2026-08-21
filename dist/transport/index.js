@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.StreamInterruptedError = exports.NotStreamableError = exports.isTerminalEvent = exports.SseTransport = exports.DEFAULT_SSE_ENDPOINTS = exports.SseParser = exports.readSseStream = exports.CopilotHttpError = exports.decodePolledEvent = exports.decodeFrame = exports.AutoTransport = exports.encodeCursor = exports.DEFAULT_AGENTIC_ENDPOINTS = exports.decodeCursor = exports.AgenticTransport = exports.AGENTIC_STATUS = void 0;
+exports.StreamInterruptedError = exports.NotStreamableError = exports.isTerminalEvent = exports.turnFromRow = exports.transcriptFromRequest = exports.SseTransport = exports.DEFAULT_SSE_ENDPOINTS = exports.SseParser = exports.readSseStream = exports.normalizeResultData = exports.formatResultCell = exports.CopilotHttpError = exports.decodePolledEvent = exports.decodeFrame = exports.AutoTransport = exports.encodeCursor = exports.DEFAULT_AGENTIC_ENDPOINTS = exports.decodeCursor = exports.AgenticTransport = exports.AGENTIC_STATUS = void 0;
 exports.createTransport = createTransport;
 const agentic_transport_1 = require("./agentic-transport");
 const auto_transport_1 = require("./auto-transport");
@@ -51,12 +51,18 @@ Object.defineProperty(exports, "decodeFrame", { enumerable: true, get: function 
 Object.defineProperty(exports, "decodePolledEvent", { enumerable: true, get: function () { return decode_1.decodePolledEvent; } });
 var http_1 = require("./http");
 Object.defineProperty(exports, "CopilotHttpError", { enumerable: true, get: function () { return http_1.CopilotHttpError; } });
+var result_data_1 = require("./result-data");
+Object.defineProperty(exports, "formatResultCell", { enumerable: true, get: function () { return result_data_1.formatResultCell; } });
+Object.defineProperty(exports, "normalizeResultData", { enumerable: true, get: function () { return result_data_1.normalizeResultData; } });
 var sse_1 = require("./sse");
 Object.defineProperty(exports, "readSseStream", { enumerable: true, get: function () { return sse_1.readSseStream; } });
 Object.defineProperty(exports, "SseParser", { enumerable: true, get: function () { return sse_1.SseParser; } });
 var sse_transport_2 = require("./sse-transport");
 Object.defineProperty(exports, "DEFAULT_SSE_ENDPOINTS", { enumerable: true, get: function () { return sse_transport_2.DEFAULT_SSE_ENDPOINTS; } });
 Object.defineProperty(exports, "SseTransport", { enumerable: true, get: function () { return sse_transport_2.SseTransport; } });
+var transcript_1 = require("./transcript");
+Object.defineProperty(exports, "transcriptFromRequest", { enumerable: true, get: function () { return transcript_1.transcriptFromRequest; } });
+Object.defineProperty(exports, "turnFromRow", { enumerable: true, get: function () { return transcript_1.turnFromRow; } });
 var types_1 = require("./types");
 Object.defineProperty(exports, "isTerminalEvent", { enumerable: true, get: function () { return types_1.isTerminalEvent; } });
 Object.defineProperty(exports, "NotStreamableError", { enumerable: true, get: function () { return types_1.NotStreamableError; } });

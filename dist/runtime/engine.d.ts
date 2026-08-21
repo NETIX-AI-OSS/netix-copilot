@@ -5,6 +5,10 @@ export interface CopilotTurnView {
     prompt: string;
     createdAt: number;
     run: RunState;
+    wirePrompt?: string;
+}
+export interface CopilotSendOptions {
+    wireText?: string;
 }
 export interface CopilotEngineState {
     threadId?: string;
@@ -14,6 +18,7 @@ export interface CopilotEngineState {
     online: boolean;
     threads: CopilotThread[];
     threadsLoaded: boolean;
+    threadLoading: boolean;
 }
 export interface OnlineSource {
     isOnline(): boolean;
@@ -48,6 +53,7 @@ export declare class CopilotEngine {
     private unsubscribeOnline;
     private disposed;
     private localTurnSeq;
+    private threadSeq;
     constructor(options: CopilotEngineOptions);
     subscribe: (listener: () => void) => (() => void);
     getSnapshot: () => CopilotEngineState;
@@ -55,11 +61,12 @@ export declare class CopilotEngine {
     release(): void;
     get activeRun(): RunState | undefined;
     get isStreaming(): boolean;
-    send(prompt: string, scope?: JsonObject): Promise<void>;
+    send(prompt: string, scope?: JsonObject, options?: CopilotSendOptions): Promise<void>;
     cancel(): void;
     approve(stepId: string, approved: boolean): Promise<void>;
     startNewThread(): void;
     selectThread(threadId: string): void;
+    loadThread(threadId: string): Promise<void>;
     loadThreads(): Promise<void>;
     dispose(): void;
     private consume;

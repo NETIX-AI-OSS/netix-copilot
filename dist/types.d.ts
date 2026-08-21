@@ -25,6 +25,16 @@ export interface CopilotUsage {
     costUsd?: number;
     model?: string;
 }
+export interface CopilotResultData {
+    columns: string[];
+    rows: JsonObject[];
+    raw: JsonValue;
+}
+export interface CopilotRunSummary {
+    tools?: string[];
+    executionMs?: number;
+    resultData?: CopilotResultData;
+}
 export interface CopilotErrorPayload {
     message: string;
     code?: string;
@@ -66,11 +76,11 @@ export interface UsageEvent {
     type: 'usage';
     usage: CopilotUsage;
 }
-export interface DoneEvent {
+export interface DoneEvent extends CopilotRunSummary {
     type: 'done';
     turnId?: string;
 }
-export interface ErrorEvent {
+export interface ErrorEvent extends CopilotRunSummary {
     type: 'error';
     error: CopilotErrorPayload;
 }
@@ -113,6 +123,9 @@ export interface RunState {
     text: string;
     charts: CopilotChart[];
     usage?: CopilotUsage;
+    tools?: string[];
+    executionMs?: number;
+    resultData?: CopilotResultData;
     error?: CopilotErrorPayload;
     lastEventId?: string;
     offline: boolean;

@@ -72,10 +72,17 @@ function useCopilotEnabled() {
     const { adapters, config } = useCopilotContext();
     return adapters.hasPermission(config.permission ?? exports.DEFAULT_COPILOT_PERMISSION);
 }
-// Send the composer's text with the host's page context attached as scope.
+// Send the composer's text with the host's page context attached as scope, running it through
+// the host's prompt transform first so a wire-only suffix never reaches the user's own bubble.
 function useCopilotSend() {
     const { engine, adapters } = useCopilotContext();
     return (prompt) => {
-        void engine.send(prompt, (0, types_1.buildScope)(adapters.pageContext));
+        const { threadId } = engine.getSnapshot();
+        const { display, wire } = (0, types_1.resolveCopilotPrompt)(prompt, adapters.transformPrompt, {
+            pageContext: adapters.pageContext,
+            isFirstMessage: threadId === undefined,
+            ...(threadId === undefined ? {} : { threadId }),
+        });
+        void engine.send(display, (0, types_1.buildScope)(adapters.pageContext), { wireText: wire });
     };
 }

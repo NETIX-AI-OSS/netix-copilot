@@ -58,6 +58,12 @@ class AutoTransport {
     listThreads(signal) {
         return (this.resolved ?? this.polling).listThreads(signal);
     }
+    // History reads through whichever transport is live, defaulting to polling for the same reason
+    // listThreads does: before the first send the poll contract is the one known to be deployed.
+    async fetchThread(threadId, signal) {
+        const target = this.resolved ?? this.polling;
+        return target.fetchThread ? target.fetchThread(threadId, signal) : [];
+    }
 }
 exports.AutoTransport = AutoTransport;
 function isRouteMissing(error) {

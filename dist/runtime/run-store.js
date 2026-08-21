@@ -29,6 +29,18 @@ function upsertStep(steps, incoming) {
 function mergeUsage(current, incoming) {
     return { ...current, ...incoming };
 }
+// Only the keys the terminal payload actually carried, so a summary that omits execution_time
+// does not blank one an earlier event already recorded.
+function applySummary(summary) {
+    const patch = {};
+    if (summary.tools !== undefined)
+        patch.tools = summary.tools;
+    if (summary.executionMs !== undefined)
+        patch.executionMs = summary.executionMs;
+    if (summary.resultData !== undefined)
+        patch.resultData = summary.resultData;
+    return patch;
+}
 function applyEvent(state, event) {
     switch (event.type) {
         case 'run_started': {
@@ -78,9 +90,15 @@ function applyEvent(state, event) {
         case 'usage':
             return { ...state, usage: mergeUsage(state.usage, event.usage) };
         case 'done':
-            return { ...state, status: 'done', offline: false };
+            return { ...state, ...applySummary(event), status: 'done', offline: false };
         case 'error':
-            return { ...state, status: 'error', error: event.error, offline: false };
+            return {
+                ...state,
+                ...applySummary(event),
+                status: 'error',
+                error: event.error,
+                offline: false,
+            };
         case 'cancelled':
             return { ...state, status: 'cancelled', offline: false };
         default:

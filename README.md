@@ -10,13 +10,13 @@ neither SWR nor react-query, bundles no chart library, and imports no stylesheet
 ## Install
 
 ```bash
-pnpm add github:NETIX-AI-OSS/netix-copilot#v0.1.0
+pnpm add github:NETIX-AI-OSS/netix-copilot#v0.2.0
 ```
 
 ```jsonc
 // package.json
 "dependencies": {
-  "netix-copilot": "github:NETIX-AI-OSS/netix-copilot#v0.1.0"
+  "netix-copilot": "github:NETIX-AI-OSS/netix-copilot#v0.2.0"
 }
 ```
 
@@ -65,18 +65,92 @@ function AppShell() {
 }
 ```
 
+### Opening the dock from the host
+
+`CopilotDock` is uncontrolled by default and remembers whether it was open. Supply `open` and the
+host owns the state instead — which is what a URL contract, a topbar button or a deep link needs.
+
+```tsx
+const [params, setParams] = useSearchParams()
+const open = params.get('ai_open') === '1'
+
+<CopilotDock
+  open={open}
+  onOpenChange={(next) => {
+    setParams((current) => {
+      if (next) current.set('ai_open', '1')
+      else current.delete('ai_open')
+      return current
+    })
+  }}
+  showLauncher={false}
+/>
+```
+
+Precedence is: a supplied `open` prop, then the stored value, then `defaultOpen`, then closed.
+While `open` is supplied nothing is read from or written to localStorage, so the host's value is
+never overwritten by a stale one.
+
+To restore a conversation from a `?thread=<id>` link, point the engine at it:
+
+```tsx
+useEffect(() => {
+  if (threadId) engine.selectThread(threadId)
+}, [engine, threadId])
+```
+
+`selectThread` fetches the thread and rebuilds its turns — plan, charts, result tables, tools and
+timing included — so a replayed answer renders through the same components as a live one. Use
+`engine.loadThread(id)` when you need to await it, and `state.threadLoading` while it is in flight.
+
+### Scoping a prompt without showing the scope
+
+ml-engine's agentic contract has no scope field, so a host sometimes has to put the scope in the
+prompt text. `transformPrompt` keeps that off the screen:
+
+```tsx
+adapters={{
+  // …
+  transformPrompt: (prompt, { isFirstMessage }) =>
+    isFirstMessage && workOrderId ? `${prompt} WORK_ORDER_ID: ${workOrderId}` : prompt,
+}}
+```
+
+The backend receives the transformed text; the transcript keeps what the user typed. Return
+`{ wire, display }` instead of a string to change both. `engine.send(prompt, scope, { wireText })`
+is the same split one level down, and `CopilotTurnView.wirePrompt` records the difference.
+
 ## Which backend it talks to
 
 There are two wire protocols behind one event vocabulary, and the difference is not academic.
 
-| Transport | Routes                                                                                                           | Status on 2026-08-21                                                                                                                        |
-| --------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `agentic` | `POST /api/agentic-ml-request/`, `GET /api/agentic-ml-request/{id}/`, `POST /api/agentic-ml-request/{id}/reply/` | **Live.** This is what ml-engine serves and what every existing chat drawer already calls.                                                  |
-| `sse`     | `POST /api/copilot/turns/`, `GET /api/copilot/turns/{id}/stream/`                                                | **Not deployed.** The streaming contract from the copilot blueprint. Implemented and tested here so the hosts need no change when it lands. |
+| Transport | Routes                                                                                                           | Status on 2026-08-21                                                                                                                                      |
+| --------- | ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agentic` | `POST /api/agentic-ml-request/`, `GET /api/agentic-ml-request/{id}/`, `POST /api/agentic-ml-request/{id}/reply/` | **Live.** This is what ml-engine serves and what every existing chat drawer already calls.                                                                |
+| `sse`     | `GET /api/copilot/turn/{id}/events` plus the `copilot-turn` and `copilot-conversation` routers                   | **Partly live.** Streaming, cancel, approval and thread routes all exist. The create does not: a turn is opened through the agentic resource (see below). |
 
 `transport: 'auto'` (the default) probes the streaming create endpoint once, and on a 404/405/501
 switches permanently to the agentic contract for the life of the tab. Pin it with
 `transport: 'agentic'` to skip the probe entirely, or `'sse'` to require streaming.
+
+### The routes, as ml-engine actually registers them
+
+Verified against `service/urls.py`, `service/views.py` and `service/copilot/sse.py` on
+`feat/copilot-w2-memory-and-actions`, 2026-08-21. Two spellings coexist and neither is a typo: the
+DRF router registers `copilot-turn`, while the SSE endpoint is served by the ASGI path router
+ahead of Django at `copilot/turn`, without a trailing slash.
+
+| Purpose        | Path                                                       |
+| -------------- | ---------------------------------------------------------- |
+| stream a turn  | `GET /api/copilot/turn/{turnId}/events`                    |
+| cancel a turn  | `POST /api/copilot-turn/{turnId}/cancel/`                  |
+| approve a step | `POST /api/copilot-turn/{turnId}/steps/{stepId}/approval/` |
+| list threads   | `GET /api/copilot-conversation/`                           |
+| thread history | `GET /api/copilot-turn/?conversation={threadId}`           |
+
+There is deliberately **no `POST /api/copilot/turns/`**. A turn is opened through
+`POST /api/agentic-ml-request/`, whose response carries the `turn_id` to tail. `auto` therefore
+still resolves to the poll transport on the first send in every current cluster.
 
 The agentic transport polls the request resource and diffs successive snapshots into the same
 events the stream will emit: `response_text` growth becomes `message_delta`, new `execution_log`
@@ -92,6 +166,25 @@ entries become `step_result`, `chart_config` becomes `chart`, and the integer `s
 consulting the orchestrator, so a perfectly healthy run may never emit one. Nothing blocks on it;
 `RunState.hasPlan` records whether it arrived and the timeline renders from whatever steps exist.
 
+The list is **closed**. ml-engine's decoder accepts these eleven names and drops anything else
+without a word, which is why run-level facts that have no event of their own — `tools`,
+`execution_time`, `result_data` — ride on the terminal `done` or `error` payload instead of on a
+twelfth event name. `CopilotRunSummary` is that payload; `RunState.tools`, `RunState.executionMs`
+and `RunState.resultData` are where it lands.
+
+### Approvals
+
+An approval request is a `step_started` event whose step carries `status: "awaiting_approval"`,
+keyed by `call_id`. The decision goes back as
+`POST /api/copilot-turn/{turnId}/steps/{stepId}/approval/` with
+`{"approved": true, "decision": "approve"}`; ml-engine accepts either key and prefers `approved`.
+Approving needs the `copilot-action-execute` permission, declining needs none, and a step that has
+already been decided answers 409.
+
+Only `SseTransport` implements it. `AgenticTransport.respondToApproval` throws, because the poll
+resource surfaces no `awaiting_approval` step and serves no decision route — resolving quietly
+would tell a user a destructive action was authorised when nothing recorded it.
+
 ## The adapter contract
 
 Everything that differs between applications is injected. Everything that does not is owned here.
@@ -104,6 +197,7 @@ Everything that differs between applications is injected. Everything that does n
 | `t`                    | `(key, vars?) => string`    | Every visible string goes through it. `COPILOT_STRINGS` lists the keys; `createFallbackTranslate()` is a working default.                                           |
 | `theme`                | `CopilotThemeTokens`        | Applied as CSS custom properties, so the dock restyles without a stylesheet import and without caring that viz-ui is on Tailwind 3 while prism-ui is on Tailwind 4. |
 | `renderMarkdown`       | optional                    | Override the built-in renderer. Omit it and the SDK uses its own streaming-tolerant one, which keeps `react-markdown` out of the dependency tree.                   |
+| `transformPrompt`      | optional                    | Last chance to change what goes on the wire. The transcript keeps what the user typed, so a host scope hint never appears in the user's own chat bubble.            |
 | `onNavigate`, `logger` | optional                    | Deep links and diagnostics.                                                                                                                                         |
 
 There is deliberately **no data-layer adapter**. The SDK owns its own `fetch`, so it behaves
@@ -168,13 +262,13 @@ pnpm format
 The build output is committed, so a release is: build, commit, tag, push.
 
 ```bash
-pnpm install
+pnpm install --config.minimumReleaseAge=1440
 pnpm lint && pnpm format:check && pnpm test && pnpm build
 git add -A dist
-git commit -m "release: v0.2.0"
-git tag v0.2.0          # lightweight. NEVER -a, NEVER -s
+git commit -m "release: v0.3.0"
+git tag v0.3.0          # lightweight. NEVER -a, NEVER -s
 git push origin main
-git push origin v0.2.0
+git push origin v0.3.0
 ```
 
 ### Tags must be lightweight
@@ -191,7 +285,7 @@ v1.4.0 are lightweight because of it.
 Check before pushing — the answer must be `commit`, not `tag`:
 
 ```bash
-git cat-file -t v0.2.0
+git cat-file -t v0.3.0
 ```
 
 Because pnpm pins a resolved SHA, a tag must also be treated as immutable. Moving one strands
