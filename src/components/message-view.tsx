@@ -6,14 +6,27 @@ import { isRunActive } from '../runtime/run-store'
 import { ApprovalCard } from './approval-card'
 import { Markdown } from './markdown'
 import { PlanTimeline } from './plan-timeline'
+import { ResultTable } from './result-table'
+import { RunBadges } from './run-badges'
 
 export interface MessageViewProps {
   turn: CopilotTurnView
+  // Off for a host that renders its own status chips. The badges are on by default because
+  // dropping them was a visible regression when the first host adopted the SDK.
+  showBadges?: boolean
+  showResultData?: boolean
 }
 
-// One prompt and everything the run produced for it: the step timeline, the streaming answer,
-// any charts and any approval the backend is waiting on.
-export function MessageView({ turn }: MessageViewProps): ReactNode {
+// One prompt and everything the run produced for it: the status badges, the step timeline, the
+// streaming answer, any charts, the result table and any approval the backend is waiting on.
+//
+// `turn.prompt` is rendered, never `turn.wirePrompt`: whatever the host appended for the backend
+// stays off the screen.
+export function MessageView({
+  turn,
+  showBadges = true,
+  showResultData = true,
+}: MessageViewProps): ReactNode {
   const { t, renderChart, renderMarkdown } = useCopilotAdapters()
   const { run } = turn
   const streaming = isRunActive(run)
@@ -31,6 +44,8 @@ export function MessageView({ turn }: MessageViewProps): ReactNode {
         </p>
       ) : null}
 
+      {showBadges ? <RunBadges run={run} /> : null}
+
       <PlanTimeline steps={run.steps} hasPlan={run.hasPlan} />
 
       {run.text !== '' ? (
@@ -39,6 +54,8 @@ export function MessageView({ turn }: MessageViewProps): ReactNode {
           {streaming ? <span className='nxcp-caret' aria-hidden='true' /> : null}
         </div>
       ) : null}
+
+      {showResultData && run.resultData ? <ResultTable data={run.resultData} /> : null}
 
       {run.charts.map((chart) => (
         <figure key={chart.id} className='nxcp-chart' style={{ margin: 0 }}>

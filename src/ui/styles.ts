@@ -258,6 +258,87 @@ export const COPILOT_CSS = `
   display: flex;
   gap: 8px;
 }
+.nxcp-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.nxcp-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border: 1px solid var(--nxcp-border);
+  border-radius: 999px;
+  background: var(--nxcp-surface-muted);
+  color: var(--nxcp-text-muted);
+  font-size: 11.5px;
+  line-height: 1.7;
+  white-space: nowrap;
+}
+.nxcp-badge[data-tone='tool'] {
+  font-family: var(--nxcp-mono);
+  font-size: 11px;
+}
+.nxcp-badge[data-run-status='done'] {
+  border-color: var(--nxcp-success);
+  color: var(--nxcp-success);
+}
+.nxcp-badge[data-run-status='error'] {
+  border-color: var(--nxcp-danger);
+  color: var(--nxcp-danger);
+}
+.nxcp-badge[data-run-status='streaming'],
+.nxcp-badge[data-run-status='queued'] {
+  border-color: var(--nxcp-accent);
+  color: var(--nxcp-accent);
+}
+.nxcp-badge[data-run-status='paused'] {
+  border-color: var(--nxcp-warning);
+  color: var(--nxcp-warning);
+}
+.nxcp-result {
+  border: 1px solid var(--nxcp-border);
+  border-radius: var(--nxcp-radius);
+  padding: 8px;
+  background: var(--nxcp-surface);
+}
+.nxcp-result-caption {
+  font-size: 12.5px;
+  color: var(--nxcp-text-muted);
+  margin-bottom: 6px;
+}
+.nxcp-result-scalar {
+  margin: 0;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+/* A wide result scrolls inside its own box; the dock body never scrolls sideways. */
+.nxcp-result-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.nxcp-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12.5px;
+}
+.nxcp-table th,
+.nxcp-table td {
+  border-bottom: 1px solid var(--nxcp-border);
+  padding: 5px 8px;
+  text-align: left;
+  white-space: nowrap;
+}
+.nxcp-table th {
+  background: var(--nxcp-surface-muted);
+  font-weight: 600;
+}
+.nxcp-result-more {
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  color: var(--nxcp-text-muted);
+}
 .nxcp-chart {
   border: 1px solid var(--nxcp-border);
   border-radius: var(--nxcp-radius);
