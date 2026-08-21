@@ -19,7 +19,7 @@ import { createTransport } from '../transport'
 import type { CopilotTransport } from '../transport/types'
 import type { RunState } from '../types'
 import type { CopilotAdapters } from './types'
-import { buildScope } from './types'
+import { buildScope, resolveCopilotPrompt } from './types'
 
 export interface CopilotConfig extends CopilotTransportConfig {
   // Permission codename gating the whole surface. Defaults to the ml-engine permission the
@@ -127,10 +127,17 @@ export function useCopilotEnabled(): boolean {
   return adapters.hasPermission(config.permission ?? DEFAULT_COPILOT_PERMISSION)
 }
 
-// Send the composer's text with the host's page context attached as scope.
+// Send the composer's text with the host's page context attached as scope, running it through
+// the host's prompt transform first so a wire-only suffix never reaches the user's own bubble.
 export function useCopilotSend(): (prompt: string) => void {
   const { engine, adapters } = useCopilotContext()
   return (prompt: string) => {
-    void engine.send(prompt, buildScope(adapters.pageContext))
+    const { threadId } = engine.getSnapshot()
+    const { display, wire } = resolveCopilotPrompt(prompt, adapters.transformPrompt, {
+      pageContext: adapters.pageContext,
+      isFirstMessage: threadId === undefined,
+      ...(threadId === undefined ? {} : { threadId }),
+    })
+    void engine.send(display, buildScope(adapters.pageContext), { wireText: wire })
   }
 }

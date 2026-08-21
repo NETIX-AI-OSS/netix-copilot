@@ -39,6 +39,29 @@ export interface CopilotPageContext {
 
 export type TranslateFn = (key: string, vars?: Record<string, string | number>) => string
 
+// What the backend receives and what the user reads, when a host needs them to differ.
+// cafm-v2-ui has to append `WORK_ORDER_ID: 4242` to the prompt because the agentic contract has
+// no scope field, and that suffix must not appear in the user's own chat bubble.
+export interface CopilotPrompt {
+  wire: string
+  // Defaults to the text the user typed, which stays authoritative for the transcript.
+  display?: string
+}
+
+export interface CopilotPromptContext {
+  pageContext: CopilotPageContext
+  threadId?: string
+  // True for the message that opens a thread. Hosts usually scope only that one, because a
+  // reply lands on the same backend row and inherits whatever scope opened it.
+  isFirstMessage: boolean
+}
+
+// Returning a bare string rewrites the wire text and leaves the display text alone.
+export type CopilotPromptTransform = (
+  prompt: string,
+  context: CopilotPromptContext,
+) => string | CopilotPrompt
+
 // Theme is passed as plain tokens and applied as CSS custom properties, so the SDK works
 // identically under Tailwind 3 (viz-ui, cafm-v2-ui) and Tailwind 4 (prism-ui) and needs no
 // stylesheet import in the host.
@@ -83,11 +106,35 @@ export interface CopilotAdapters {
   // Optional override. Without it the SDK uses its own streaming-tolerant markdown renderer,
   // which keeps react-markdown out of the dependency tree.
   renderMarkdown?: (markdown: string, context: CopilotMarkdownRenderContext) => ReactNode
+  // Last chance to change what goes on the wire. The transcript keeps what the user typed.
+  transformPrompt?: CopilotPromptTransform
   // Called when the assistant offers a link into the host app.
   onNavigate?: (href: string) => void
   logger?: {
     warn: (message: string, detail?: unknown) => void
     error: (message: string, detail?: unknown) => void
+  }
+}
+
+// Split one typed prompt into the text to display and the text to send. Always trims, and never
+// lets a transform blank the transcript: an empty display falls back to what the user typed.
+export function resolveCopilotPrompt(
+  prompt: string,
+  transform: CopilotPromptTransform | undefined,
+  context: CopilotPromptContext,
+): { display: string; wire: string } {
+  const trimmed = prompt.trim()
+  if (transform === undefined || trimmed === '') return { display: trimmed, wire: trimmed }
+  const result = transform(trimmed, context)
+  if (typeof result === 'string') {
+    const wire = result.trim()
+    return { display: trimmed, wire: wire === '' ? trimmed : wire }
+  }
+  const wire = result.wire.trim()
+  const display = (result.display ?? trimmed).trim()
+  return {
+    display: display === '' ? trimmed : display,
+    wire: wire === '' ? trimmed : wire,
   }
 }
 

@@ -1,8 +1,8 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
-import { CopilotProvider, useCopilotEngine } from '../adapters/context'
-import { buildScope } from '../adapters/types'
+import { CopilotProvider, useCopilotEngine, useCopilotState } from '../adapters/context'
+import { buildScope, resolveCopilotPrompt } from '../adapters/types'
 import { Composer } from '../components/composer'
 import { CopilotHttpError, joinUrl, requestJson } from '../transport/http'
 import type { ConsumeRunOptions, CopilotTransport, CreatedTurn } from '../transport/types'
@@ -45,6 +45,67 @@ describe('buildScope', () => {
       state: { selectedTags: ['t1'] },
     })
     expect(scope.state).toEqual({ selectedTags: ['t1'] })
+  })
+})
+
+describe('resolveCopilotPrompt', () => {
+  const context = {
+    pageContext: testAdapters().pageContext,
+    isFirstMessage: true,
+  }
+
+  it('sends and shows the same text when the host supplies no transform', () => {
+    expect(resolveCopilotPrompt('  what is the status?  ', undefined, context)).toEqual({
+      display: 'what is the status?',
+      wire: 'what is the status?',
+    })
+  })
+
+  it('lets a string transform change the wire text and nothing else', () => {
+    const resolved = resolveCopilotPrompt(
+      'what is the status?',
+      (prompt) => `${prompt} WORK_ORDER_ID: 4242`,
+      context,
+    )
+    expect(resolved).toEqual({
+      display: 'what is the status?',
+      wire: 'what is the status? WORK_ORDER_ID: 4242',
+    })
+  })
+
+  it('accepts an explicit display override', () => {
+    const resolved = resolveCopilotPrompt(
+      'status?',
+      () => ({ wire: 'status? WORK_ORDER_ID: 1', display: 'status? (WO 1)' }),
+      context,
+    )
+    expect(resolved).toEqual({ display: 'status? (WO 1)', wire: 'status? WORK_ORDER_ID: 1' })
+  })
+
+  it('tells the transform whether this message opens the thread', () => {
+    const transform = vi.fn(() => 'x')
+    resolveCopilotPrompt('a', transform, { ...context, isFirstMessage: false, threadId: '9' })
+    expect(transform).toHaveBeenCalledWith(
+      'a',
+      expect.objectContaining({ isFirstMessage: false, threadId: '9' }),
+    )
+  })
+
+  it('never lets a transform blank the transcript or the wire', () => {
+    expect(resolveCopilotPrompt('keep me', () => '   ', context)).toEqual({
+      display: 'keep me',
+      wire: 'keep me',
+    })
+    expect(resolveCopilotPrompt('keep me', () => ({ wire: '', display: '' }), context)).toEqual({
+      display: 'keep me',
+      wire: 'keep me',
+    })
+  })
+
+  it('does not call the transform for an empty prompt', () => {
+    const transform = vi.fn(() => 'x')
+    expect(resolveCopilotPrompt('   ', transform, context)).toEqual({ display: '', wire: '' })
+    expect(transform).not.toHaveBeenCalled()
   })
 })
 
@@ -189,6 +250,18 @@ class RecordingTransport implements CopilotTransport {
   }
 }
 
+// Renders both halves of a turn so the split between them is observable from the outside.
+function MessageList() {
+  const turn = useCopilotState().turns[0]
+  if (!turn) return null
+  return (
+    <div>
+      <span data-testid='bubble'>{turn.prompt}</span>
+      <span data-testid='wire'>{turn.wirePrompt ?? turn.prompt}</span>
+    </div>
+  )
+}
+
 function ComposerHarness({ transport }: { transport: CopilotTransport }) {
   return (
     <CopilotProvider
@@ -215,6 +288,31 @@ describe('Composer', () => {
     expect(transport.inputs).toHaveLength(1)
     expect(transport.inputs[0]?.prompt).toBe('why is AHU-1 offline?')
     expect(transport.inputs[0]?.scope).toMatchObject({ app: 'test-ui', organization_id: 7 })
+  })
+
+  it('puts the host scope hint on the wire and keeps it out of the transcript', async () => {
+    const transport = new RecordingTransport()
+    render(
+      <CopilotProvider
+        config={{ baseUrl: 'https://x' }}
+        adapters={testAdapters({
+          transformPrompt: (prompt) => `${prompt} WORK_ORDER_ID: 4242`,
+        })}
+        transport={transport}
+      >
+        <Composer />
+        <MessageList />
+      </CopilotProvider>,
+    )
+    const box = screen.getByLabelText('Message')
+    fireEvent.change(box, { target: { value: 'what is the status?' } })
+    await act(async () => {
+      fireEvent.keyDown(box, { key: 'Enter' })
+    })
+
+    expect(transport.inputs[0]?.prompt).toBe('what is the status? WORK_ORDER_ID: 4242')
+    expect(screen.getByTestId('bubble').textContent).toBe('what is the status?')
+    expect(screen.getByTestId('wire').textContent).toBe('what is the status? WORK_ORDER_ID: 4242')
   })
 
   it('inserts a newline on Shift+Enter instead of sending', async () => {

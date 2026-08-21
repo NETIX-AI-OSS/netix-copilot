@@ -1,9 +1,10 @@
-import { act, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { StrictMode, useEffect } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { CopilotProvider, useCopilotEngine } from '../adapters/context'
 import type { CopilotAdapters } from '../adapters/types'
+import type { CopilotDockProps } from '../components/dock'
 import { CopilotDock } from '../components/dock'
 import type { CopilotEngine } from '../runtime/engine'
 import type { ConsumeRunOptions, CopilotTransport, CreatedTurn } from '../transport/types'
@@ -284,6 +285,14 @@ describe('CopilotDock', () => {
     expect(dock.style.getPropertyValue('--nxcp-accent')).toBe('rgb(1, 2, 3)')
   })
 
+  it('clamps a stored width that is out of range', () => {
+    window.localStorage.setItem('netix-copilot.width', '9999')
+    const transport = new ScriptedTransport()
+    mount(transport)
+    const dock = document.querySelector('.nxcp-dock') as HTMLElement
+    expect(dock.style.width).toBe('720px')
+  })
+
   it('remembers the dock width across mounts', () => {
     window.localStorage.setItem('netix-copilot.width', '512')
     const transport = new ScriptedTransport()
@@ -291,12 +300,93 @@ describe('CopilotDock', () => {
     const dock = document.querySelector('.nxcp-dock') as HTMLElement
     expect(dock.style.width).toBe('512px')
   })
+})
 
-  it('clamps a stored width that is out of range', () => {
-    window.localStorage.setItem('netix-copilot.width', '9999')
-    const transport = new ScriptedTransport()
-    mount(transport)
-    const dock = document.querySelector('.nxcp-dock') as HTMLElement
-    expect(dock.style.width).toBe('720px')
+// Precedence, in order: a supplied `open` prop, then the stored value, then `defaultOpen`.
+// Without this the dock cannot serve ?ai_open=1, ?open_knowledge_base=1, a topbar button or a
+// ?thread= deep link, which is why cafm-v2-ui kept its own drawer shell instead.
+describe('CopilotDock open state', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+  })
+
+  function renderDock(props: Partial<CopilotDockProps>) {
+    return render(
+      <CopilotProvider
+        config={{ baseUrl: 'https://x' }}
+        adapters={testAdapters()}
+        transport={new ScriptedTransport()}
+      >
+        <CopilotDock showThreads={false} {...props} />
+      </CopilotProvider>,
+    )
+  }
+
+  it('uses defaultOpen when nothing has been stored', () => {
+    renderDock({ defaultOpen: true })
+    expect(screen.getByRole('complementary')).toBeTruthy()
+  })
+
+  it('lets the stored value beat defaultOpen', () => {
+    window.localStorage.setItem('netix-copilot.open', 'false')
+    renderDock({ defaultOpen: true })
+    expect(screen.queryByRole('complementary')).toBeNull()
+
+    cleanup()
+    window.localStorage.setItem('netix-copilot.open', 'true')
+    renderDock({ defaultOpen: false })
+    expect(screen.getByRole('complementary')).toBeTruthy()
+  })
+
+  it('lets the controlled prop beat the stored value', () => {
+    window.localStorage.setItem('netix-copilot.open', 'false')
+    renderDock({ open: true, defaultOpen: false })
+    expect(screen.getByRole('complementary')).toBeTruthy()
+
+    cleanup()
+    window.localStorage.setItem('netix-copilot.open', 'true')
+    renderDock({ open: false, defaultOpen: true })
+    expect(screen.queryByRole('complementary')).toBeNull()
+  })
+
+  it('reports a close request instead of closing itself while controlled', () => {
+    const onOpenChange = vi.fn()
+    renderDock({ open: true, onOpenChange })
+    fireEvent.click(screen.getByRole('button', { name: 'Close copilot' }))
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    expect(screen.getByRole('complementary')).toBeTruthy()
+  })
+
+  it('follows the host when the controlled value changes', () => {
+    const { rerender } = renderDock({ open: false })
+    expect(screen.queryByRole('complementary')).toBeNull()
+    rerender(
+      <CopilotProvider
+        config={{ baseUrl: 'https://x' }}
+        adapters={testAdapters()}
+        transport={new ScriptedTransport()}
+      >
+        <CopilotDock showThreads={false} open />
+      </CopilotProvider>,
+    )
+    expect(screen.getByRole('complementary')).toBeTruthy()
+  })
+
+  it('writes nothing to localStorage while controlled', () => {
+    renderDock({ open: true })
+    expect(window.localStorage.getItem('netix-copilot.open')).toBeNull()
+  })
+
+  it('still reports its own changes while uncontrolled', () => {
+    const onOpenChange = vi.fn()
+    renderDock({ defaultOpen: true, onOpenChange })
+    fireEvent.click(screen.getByRole('button', { name: 'Close copilot' }))
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    expect(screen.queryByRole('complementary')).toBeNull()
+  })
+
+  it('hides the launcher for a host that opens the dock from its own chrome', () => {
+    renderDock({ open: false, showLauncher: false })
+    expect(screen.queryByRole('button', { name: 'Ask Copilot' })).toBeNull()
   })
 })

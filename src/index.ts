@@ -17,11 +17,14 @@ export type {
   CopilotChartRenderContext,
   CopilotMarkdownRenderContext,
   CopilotPageContext,
+  CopilotPrompt,
+  CopilotPromptContext,
+  CopilotPromptTransform,
   CopilotThemeTokens,
   CopilotUser,
   TranslateFn,
 } from './adapters/types'
-export { buildScope } from './adapters/types'
+export { buildScope, resolveCopilotPrompt } from './adapters/types'
 export type { ApprovalCardProps } from './components/approval-card'
 export { ApprovalCard } from './components/approval-card'
 export type { ComposerProps } from './components/composer'
@@ -34,6 +37,10 @@ export type { MessageViewProps } from './components/message-view'
 export { MessageView } from './components/message-view'
 export type { PlanTimelineProps } from './components/plan-timeline'
 export { PlanTimeline } from './components/plan-timeline'
+export type { ResultTableProps } from './components/result-table'
+export { ResultTable } from './components/result-table'
+export type { RunBadgesProps } from './components/run-badges'
+export { RunBadges } from './components/run-badges'
 export type { ThreadListProps } from './components/thread-list'
 export { ThreadList } from './components/thread-list'
 export type { UsageFooterProps } from './components/usage-footer'
@@ -42,6 +49,7 @@ export type {
   CopilotEngineOptions,
   CopilotEngineState,
   CopilotLogger,
+  CopilotSendOptions,
   CopilotTurnView,
   OnlineSource,
 } from './runtime/engine'
@@ -59,6 +67,8 @@ export type {
   AuthTokenProvider,
   ConsumeRunOptions,
   CopilotFetch,
+  CopilotRunRow,
+  CopilotTranscriptTurn,
   CopilotTransport,
   CopilotTransportConfig,
   CreatedTurn,
@@ -79,12 +89,16 @@ export {
   decodePolledEvent,
   DEFAULT_AGENTIC_ENDPOINTS,
   DEFAULT_SSE_ENDPOINTS,
+  formatResultCell,
   isTerminalEvent,
+  normalizeResultData,
   NotStreamableError,
   readSseStream,
   SseParser,
   SseTransport,
   StreamInterruptedError,
+  transcriptFromRequest,
+  turnFromRow,
 } from './transport'
 export type * from './types'
 export { COPILOT_EVENT_NAMES } from './types'

@@ -30,6 +30,15 @@ const MAX_WIDTH = 720
 const DEFAULT_WIDTH = 420
 const KEYBOARD_STEP = 24
 
+// Returns undefined when nothing is stored, so an absent key is distinguishable from a stored
+// `false` and `defaultOpen` only applies to the former.
+function readStoredOpen(): boolean | undefined {
+  const stored = readStored(OPEN_STORAGE_KEY)
+  if (stored === 'true') return true
+  if (stored === 'false') return false
+  return undefined
+}
+
 function readStored(key: string): string | null {
   try {
     return window.localStorage.getItem(key)
@@ -56,16 +65,30 @@ function clampWidth(width: number, fallback = DEFAULT_WIDTH): number {
 export interface CopilotDockProps {
   // Rendered into the dock header, for a host-specific action such as "open in AI Studio".
   headerActions?: ReactNode
+  // Supply `open` to take ownership of the state. That is what a ?ai_open=1 URL contract, a
+  // topbar button or a ?thread= deep link needs, and while it is supplied nothing is read from
+  // or written to localStorage.
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  // Uncontrolled only, and only when nothing is stored yet: a remembered choice outranks it.
   defaultOpen?: boolean
   showThreads?: boolean
+  // Turn off when the host opens the dock from its own chrome and does not want the floating
+  // launcher as well.
+  showLauncher?: boolean
   // Escape hatch for tests and for hosts that render the dock inside their own portal.
   container?: HTMLElement | null
 }
 
+// Open-state precedence, in order: a supplied `open` prop, then the stored value, then
+// `defaultOpen`, then closed.
 export function CopilotDock({
   headerActions,
+  open: openProp,
+  onOpenChange,
   defaultOpen,
   showThreads = true,
+  showLauncher = true,
   container,
 }: CopilotDockProps): ReactNode {
   const { t, theme } = useCopilotAdapters()
@@ -73,12 +96,18 @@ export function CopilotDock({
   const state = useCopilotState()
   const enabled = useCopilotEnabled()
 
-  const [open, setOpen] = useState(() => {
-    const stored = readStored(OPEN_STORAGE_KEY)
-    if (stored === 'true') return true
-    if (stored === 'false') return false
-    return defaultOpen ?? false
-  })
+  const controlled = openProp !== undefined
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(
+    () => readStoredOpen() ?? defaultOpen ?? false,
+  )
+  const open = controlled ? openProp : uncontrolledOpen
+  const setOpen = useCallback(
+    (next: boolean) => {
+      if (!controlled) setUncontrolledOpen(next)
+      onOpenChange?.(next)
+    },
+    [controlled, onOpenChange],
+  )
   const [width, setWidth] = useState(() => {
     const stored = Number(readStored(WIDTH_STORAGE_KEY))
     return Number.isFinite(stored) && stored > 0 ? clampWidth(stored) : DEFAULT_WIDTH
@@ -92,8 +121,11 @@ export function CopilotDock({
   }, [])
 
   useEffect(() => {
-    writeStored(OPEN_STORAGE_KEY, open ? 'true' : 'false')
-  }, [open])
+    // Persistence belongs to the uncontrolled dock only. A controlled host owns the state and
+    // would otherwise find its own value overwritten by a stale one on the next mount.
+    if (controlled) return
+    writeStored(OPEN_STORAGE_KEY, uncontrolledOpen ? 'true' : 'false')
+  }, [controlled, uncontrolledOpen])
 
   useEffect(() => {
     writeStored(WIDTH_STORAGE_KEY, String(width))
@@ -181,7 +213,9 @@ export function CopilotDock({
       {showThreads ? <ThreadList /> : null}
 
       <div className='nxcp-body' ref={bodyRef}>
-        {state.turns.length === 0 ? (
+        {state.threadLoading ? (
+          <p className='nxcp-empty'>{t('copilot.threads.restoring')}</p>
+        ) : state.turns.length === 0 ? (
           <p className='nxcp-empty'>{t('copilot.dock.empty')}</p>
         ) : (
           state.turns.map((turn) => <MessageView key={turn.id} turn={turn} />)
@@ -196,7 +230,7 @@ export function CopilotDock({
         {...(run?.model ? { model: run.model } : {})}
       />
     </aside>
-  ) : (
+  ) : showLauncher ? (
     <button
       type='button'
       className='nxcp-root nxcp-launcher'
@@ -205,7 +239,7 @@ export function CopilotDock({
     >
       {t('copilot.dock.open')}
     </button>
-  )
+  ) : null
 
   if (!target) return null
   return createPortal(content, target)
