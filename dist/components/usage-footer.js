@@ -1,0 +1,30 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.UsageFooter = UsageFooter;
+const jsx_runtime_1 = require("react/jsx-runtime");
+const context_1 = require("../adapters/context");
+// Every figure here is conditional. ml-engine reports token counts and cost but keeps its
+// monthly chat-credit balance in logs only, so the credits line stays hidden rather than
+// rendering a misleading zero until the backend returns it.
+function UsageFooter({ usage, transport, model }) {
+    const { t } = (0, context_1.useCopilotAdapters)();
+    const items = [];
+    if (model)
+        items.push(model);
+    if (usage?.tokensIn !== undefined || usage?.tokensOut !== undefined) {
+        items.push(t('copilot.usage.tokens', {
+            in: usage.tokensIn ?? 0,
+            out: usage.tokensOut ?? 0,
+        }));
+    }
+    if (usage?.calls !== undefined)
+        items.push(t('copilot.usage.calls', { count: usage.calls }));
+    if (usage?.costUsd !== undefined)
+        items.push(`$${usage.costUsd.toFixed(4)}`);
+    if (usage?.creditsRemaining !== undefined) {
+        items.push(t('copilot.usage.credits', { count: usage.creditsRemaining }));
+    }
+    if (items.length === 0 && transport === undefined)
+        return null;
+    return ((0, jsx_runtime_1.jsxs)("footer", { className: 'nxcp-footer', children: [items.map((item) => ((0, jsx_runtime_1.jsx)("span", { className: 'nxcp-usage-item', children: item }, item))), transport ? ((0, jsx_runtime_1.jsx)("span", { className: 'nxcp-usage-item', style: { marginLeft: 'auto' }, "data-transport": transport, children: t(`copilot.transport.${transport}`) })) : null] }));
+}

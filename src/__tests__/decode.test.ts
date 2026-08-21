@@ -1,0 +1,201 @@
+import { beforeEach, describe, expect, it } from 'vitest'
+
+import { decodeFrame, decodePolledEvent, resetSyntheticStepCounter } from '../transport/decode'
+
+function frame(event: string, data: unknown, id?: string) {
+  return { event, data: JSON.stringify(data), ...(id === undefined ? {} : { id }) }
+}
+
+describe('decodeFrame', () => {
+  beforeEach(() => {
+    resetSyntheticStepCounter()
+  })
+
+  it('decodes run_started with snake_case fields', () => {
+    const out = decodeFrame(
+      frame('run_started', { turn_id: 't1', model: 'gpt', credits_remaining: 9 }),
+    )
+    expect(out?.event).toEqual({
+      type: 'run_started',
+      turnId: 't1',
+      model: 'gpt',
+      creditsRemaining: 9,
+    })
+  })
+
+  it('decodes run_started with camelCase fields too', () => {
+    const out = decodeFrame(frame('run_started', { turnId: 't1', creditsRemaining: 3 }))
+    expect(out?.event).toMatchObject({ type: 'run_started', turnId: 't1', creditsRemaining: 3 })
+  })
+
+  it('drops run_started without a turn id, since nothing downstream can use it', () => {
+    expect(decodeFrame(frame('run_started', { model: 'gpt' }))).toBeNull()
+  })
+
+  it('decodes queued with a position', () => {
+    expect(decodeFrame(frame('queued', { position: 4 }))?.event).toEqual({
+      type: 'queued',
+      position: 4,
+    })
+  })
+
+  it('decodes a plan into steps', () => {
+    const out = decodeFrame(
+      frame('plan', { steps: [{ id: 's1', title: 'Look up asset', tool: 'asset_get' }] }),
+    )
+    expect(out?.event).toEqual({
+      type: 'plan',
+      steps: [{ id: 's1', title: 'Look up asset', status: 'pending', tool: 'asset_get' }],
+    })
+  })
+
+  it('gives plan steps a synthetic id when the backend omits one', () => {
+    const out = decodeFrame(frame('plan', { steps: [{ title: 'Step' }, { title: 'Other' }] }))
+    const steps = out?.event.type === 'plan' ? out.event.steps : []
+    expect(steps.map((step) => step.id)).toEqual(['step-1', 'step-2'])
+  })
+
+  it('accepts an empty plan without failing', () => {
+    expect(decodeFrame(frame('plan', {}))?.event).toEqual({ type: 'plan', steps: [] })
+  })
+
+  it('maps step_result status aliases onto the canonical set', () => {
+    const out = decodeFrame(
+      frame('step_result', { call_id: 'c1', tool: 'sql', status: 'completed' }),
+    )
+    expect(out?.event).toMatchObject({ type: 'step_result', step: { id: 'c1', status: 'ok' } })
+  })
+
+  it('defaults step_started to running and step_result to ok', () => {
+    expect(decodeFrame(frame('step_started', { tool: 'a' }))?.event).toMatchObject({
+      step: { status: 'running' },
+    })
+    expect(decodeFrame(frame('step_result', { tool: 'b' }))?.event).toMatchObject({
+      step: { status: 'ok' },
+    })
+  })
+
+  it('reads a step nested under a step key', () => {
+    const out = decodeFrame(frame('step_started', { step: { id: 's9', tool: 'chart' } }))
+    expect(out?.event).toMatchObject({ step: { id: 's9', tool: 'chart' } })
+  })
+
+  it('summarizes an object arguments payload into one line', () => {
+    const out = decodeFrame(
+      frame('step_result', { tool: 't', arguments: { asset_id: 17, tags: [1, 2], nested: {} } }),
+    )
+    expect(out?.event).toMatchObject({
+      step: { argsSummary: 'asset_id=17, tags=[2], nested={…}' },
+    })
+  })
+
+  it('converts a bare duration in seconds into milliseconds', () => {
+    const out = decodeFrame(frame('step_result', { tool: 't', duration: 1.25 }))
+    expect(out?.event).toMatchObject({ step: { durationMs: 1250 } })
+  })
+
+  it('prefers an explicit duration_ms', () => {
+    const out = decodeFrame(frame('step_result', { tool: 't', duration_ms: 40, duration: 9 }))
+    expect(out?.event).toMatchObject({ step: { durationMs: 40 } })
+  })
+
+  it('decodes message_delta from any of the usual text keys', () => {
+    for (const key of ['text', 'delta', 'content', 'chunk', 'token']) {
+      const out = decodeFrame(frame('message_delta', { [key]: 'x' }))
+      expect(out?.event).toEqual({ type: 'message_delta', text: 'x' })
+    }
+  })
+
+  it('keeps an empty message_delta, which is a legitimate heartbeat of progress', () => {
+    expect(decodeFrame(frame('message_delta', { text: '' }))?.event).toEqual({
+      type: 'message_delta',
+      text: '',
+    })
+  })
+
+  it('decodes a chart and keeps the option JSON untouched', () => {
+    const option = { series: [{ type: 'bar', data: [1, 2] }] }
+    const out = decodeFrame(frame('chart', { option, title: 'Load' }))
+    expect(out?.event).toEqual({ type: 'chart', option, title: 'Load' })
+  })
+
+  it('drops a chart with no option payload', () => {
+    expect(decodeFrame(frame('chart', { title: 'nothing' }))).toBeNull()
+  })
+
+  it('decodes usage from OpenAI-style token names', () => {
+    const out = decodeFrame(frame('usage', { prompt_tokens: 10, completion_tokens: 4 }))
+    expect(out?.event).toEqual({ type: 'usage', usage: { tokensIn: 10, tokensOut: 4 } })
+  })
+
+  it('decodes usage nested under a usage key', () => {
+    const out = decodeFrame(frame('usage', { usage: { tokens_in: 1, tokens_out: 2 } }))
+    expect(out?.event).toEqual({ type: 'usage', usage: { tokensIn: 1, tokensOut: 2 } })
+  })
+
+  it('decodes error from a detail field and defaults the message', () => {
+    expect(decodeFrame(frame('error', { detail: 'nope' }))?.event).toEqual({
+      type: 'error',
+      error: { message: 'nope' },
+    })
+    expect(decodeFrame(frame('error', {}))?.event).toMatchObject({
+      type: 'error',
+      error: { message: 'The copilot run failed.' },
+    })
+  })
+
+  it('decodes cancelled and done', () => {
+    expect(decodeFrame(frame('cancelled', { reason: 'user' }))?.event).toEqual({
+      type: 'cancelled',
+      reason: 'user',
+    })
+    expect(decodeFrame(frame('done', { turn_id: 't1' }))?.event).toEqual({
+      type: 'done',
+      turnId: 't1',
+    })
+  })
+
+  it('falls back to a type inside the payload when the SSE event name is generic', () => {
+    const out = decodeFrame({ event: 'message', data: JSON.stringify({ type: 'done' }) })
+    expect(out?.event).toEqual({ type: 'done' })
+  })
+
+  it('unwraps a payload nested under data', () => {
+    const out = decodeFrame({
+      event: 'message_delta',
+      data: JSON.stringify({ type: 'message_delta', data: { text: 'inner' } }),
+    })
+    expect(out?.event).toEqual({ type: 'message_delta', text: 'inner' })
+  })
+
+  it('returns null rather than throwing on malformed JSON', () => {
+    expect(decodeFrame({ event: 'done', data: '{not json' })).toBeNull()
+  })
+
+  it('returns null for an event name outside the vocabulary', () => {
+    expect(decodeFrame(frame('heartbeat', {}))).toBeNull()
+  })
+
+  it('treats an empty data body as an empty object', () => {
+    expect(decodeFrame({ event: 'cancelled', data: '' })?.event).toEqual({ type: 'cancelled' })
+  })
+
+  it('carries the frame id through as the resume cursor', () => {
+    expect(decodeFrame(frame('done', {}, 'e-12'))?.id).toBe('e-12')
+  })
+})
+
+describe('decodePolledEvent', () => {
+  it('decodes a polled row shaped as { event, ... }', () => {
+    const out = decodePolledEvent({ event: 'message_delta', text: 'hi', id: '3' })
+    expect(out).toEqual({ event: { type: 'message_delta', text: 'hi' }, id: '3' })
+  })
+
+  it('accepts a cursor key in place of an id', () => {
+    expect(decodePolledEvent({ type: 'done', cursor: 'c9' })?.id).toBe('c9')
+  })
+
+  it('returns null for a non-object row', () => {
+    expect(decodePolledEvent('nope')).toBeNull()
+  })
+})

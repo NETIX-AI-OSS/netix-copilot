@@ -1,0 +1,62 @@
+{
+  "name": "netix-copilot",
+  "version": "0.1.0",
+  "description": "Shared React SDK for the NETIX copilot dock: streaming transport, host adapters and chat surface components",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NETIX-AI-OSS/netix-copilot.git"
+  },
+  "author": "NETIX.AI OSS",
+  "license": "AGPL-3.0-only",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "peerDependencies": {
+    "react": ">=18.2.0 <20.0.0",
+    "react-dom": ">=18.2.0 <20.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitest/coverage-v8": "^4.1.10",
+    "eslint": "^10.8.1",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-simple-import-sort": "^13.0.0",
+    "eslint-plugin-unused-imports": "^4.4.1",
+    "globals": "^16.5.0",
+    "jsdom": "^26.1.0",
+    "prettier": "^3.9.6",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.67.0",
+    "vitest": "^4.1.10"
+  },
+  "bugs": {
+    "url": "https://github.com/NETIX-AI-OSS/netix-copilot/issues"
+  },
+  "homepage": "https://github.com/NETIX-AI-OSS/netix-copilot#readme",
+  "keywords": [
+    "copilot",
+    "react",
+    "sse",
+    "streaming",
+    "chat",
+    "typescript",
+    "oss"
+  ],
+  "packageManager": "pnpm@11.8.0"
+}

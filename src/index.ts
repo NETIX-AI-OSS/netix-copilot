@@ -1,0 +1,96 @@
+// Public surface of netix-copilot.
+
+export type { CopilotConfig, CopilotProviderProps } from './adapters/context'
+export {
+  CopilotProvider,
+  DEFAULT_COPILOT_PERMISSION,
+  useCopilotAdapters,
+  useCopilotConfig,
+  useCopilotEnabled,
+  useCopilotEngine,
+  useCopilotRun,
+  useCopilotSend,
+  useCopilotState,
+} from './adapters/context'
+export type {
+  CopilotAdapters,
+  CopilotChartRenderContext,
+  CopilotMarkdownRenderContext,
+  CopilotPageContext,
+  CopilotThemeTokens,
+  CopilotUser,
+  TranslateFn,
+} from './adapters/types'
+export { buildScope } from './adapters/types'
+export type { ApprovalCardProps } from './components/approval-card'
+export { ApprovalCard } from './components/approval-card'
+export type { ComposerProps } from './components/composer'
+export { Composer } from './components/composer'
+export type { CopilotDockProps } from './components/dock'
+export { CopilotDock } from './components/dock'
+export type { MarkdownProps } from './components/markdown'
+export { Markdown, parseBlocks, renderInline } from './components/markdown'
+export type { MessageViewProps } from './components/message-view'
+export { MessageView } from './components/message-view'
+export type { PlanTimelineProps } from './components/plan-timeline'
+export { PlanTimeline } from './components/plan-timeline'
+export type { ThreadListProps } from './components/thread-list'
+export { ThreadList } from './components/thread-list'
+export type { UsageFooterProps } from './components/usage-footer'
+export { UsageFooter } from './components/usage-footer'
+export type {
+  CopilotEngineOptions,
+  CopilotEngineState,
+  CopilotLogger,
+  CopilotTurnView,
+  OnlineSource,
+} from './runtime/engine'
+export { browserOnlineSource, CopilotEngine } from './runtime/engine'
+export {
+  applyEnveloped,
+  applyEvent,
+  initialRunState,
+  isRunActive,
+  isRunFinished,
+} from './runtime/run-store'
+export type {
+  AgenticEndpoints,
+  AgenticIdentity,
+  AuthTokenProvider,
+  ConsumeRunOptions,
+  CopilotFetch,
+  CopilotTransport,
+  CopilotTransportConfig,
+  CreatedTurn,
+  HttpConfig,
+  SseEndpoints,
+  SseFrame,
+  SseTransportConfig,
+  TransportMode,
+  TransportName,
+} from './transport'
+export {
+  AGENTIC_STATUS,
+  AgenticTransport,
+  AutoTransport,
+  CopilotHttpError,
+  createTransport,
+  decodeFrame,
+  decodePolledEvent,
+  DEFAULT_AGENTIC_ENDPOINTS,
+  DEFAULT_SSE_ENDPOINTS,
+  isTerminalEvent,
+  NotStreamableError,
+  readSseStream,
+  SseParser,
+  SseTransport,
+  StreamInterruptedError,
+} from './transport'
+export type * from './types'
+export { COPILOT_EVENT_NAMES } from './types'
+export type { TranslateVars } from './ui/i18n'
+export { COPILOT_STRINGS, createFallbackTranslate, interpolate } from './ui/i18n'
+export { COPILOT_CSS, COPILOT_STYLE_ELEMENT_ID, injectCopilotStyles } from './ui/styles'
+export { themeToCssVars } from './ui/theme'
+export type { CopilotZIndexLayer } from './ui/z-index'
+export { COPILOT_Z_INDEX, COPILOT_Z_INDEX_NOTES } from './ui/z-index'

@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    // ES2020 rather than envoy-ts-auth's ES2016: this package is async/stream heavy and the
+    // ES2016 __awaiter downlevel wraps every stream read in a generator trampoline.
+    "target": "es2020",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "commonjs",
+    "jsx": "react-jsx",
+    "rootDir": "src",
+    "declaration": true,
+    "outDir": "./dist",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "noImplicitAny": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true
+  },
+  "include": ["src"],
+  "exclude": ["src/**/__tests__/**"]
+}
