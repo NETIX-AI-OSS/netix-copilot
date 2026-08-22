@@ -4,7 +4,7 @@
 
 import type { CopilotThread, JsonObject, SendTurnInput } from '../types'
 import type { HttpConfig } from './http'
-import { request, requestJson } from './http'
+import { isRouteMissing, request, requestJson } from './http'
 import type { RunSnapshot } from './run-diff'
 import { decodeCursor, diffRunSnapshot, isTerminalStatus } from './run-diff'
 import { transcriptFromRequest } from './transcript'
@@ -127,16 +127,24 @@ export class AgenticTransport implements CopilotTransport {
   // resource, rebuilt into the turns the message view already knows how to render.
   async fetchThread(threadId: string, signal?: AbortSignal): Promise<CopilotTranscriptTurn[]> {
     const path = fillTemplate(this.endpoints.detail, { turnId: encodeURIComponent(threadId) })
-    const snapshot = await requestJson<RunSnapshot>(this.config, path, {
-      ...(signal ? { signal } : {}),
-    })
+    const snapshot = await this.readOrEmpty<RunSnapshot>(path, signal)
+    if (snapshot === undefined) return []
     return transcriptFromRequest(snapshot, threadId)
   }
 
+  // A thread read that 404s means this cluster serves no thread store, which is an empty
+  // history rather than a failure. The dock is mounted on every route, so it must not throw.
+  private async readOrEmpty<T>(path: string, signal?: AbortSignal): Promise<T | undefined> {
+    try {
+      return await requestJson<T>(this.config, path, { ...(signal ? { signal } : {}) })
+    } catch (error) {
+      if (isRouteMissing(error)) return undefined
+      throw error
+    }
+  }
+
   async listThreads(signal?: AbortSignal): Promise<CopilotThread[]> {
-    const payload = await requestJson<unknown>(this.config, this.endpoints.collection, {
-      ...(signal ? { signal } : {}),
-    })
+    const payload = await this.readOrEmpty<unknown>(this.endpoints.collection, signal)
     const rows = Array.isArray(payload)
       ? payload
       : isRecord(payload) && Array.isArray(payload.results)

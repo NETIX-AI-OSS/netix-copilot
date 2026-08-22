@@ -3,7 +3,7 @@
 // A create that 404s means a deployment without those routes; that tab then stays on the agentic poll contract.
 
 import type { CopilotThread, SendTurnInput } from '../types'
-import { CopilotHttpError } from './http'
+import { isRouteMissing } from './http'
 import type {
   ConsumeRunOptions,
   CopilotTranscriptTurn,
@@ -64,16 +64,26 @@ export class AutoTransport implements CopilotTransport {
 
   // Threads are conversations, and a conversation id is what a briefing deep link carries, so the
   // list and the transcript both read through streaming until a failed create says otherwise.
-  listThreads(signal?: AbortSignal): Promise<CopilotThread[]> {
-    return (this.resolved ?? this.streaming).listThreads(signal)
+  // A missing route answers empty rather than throwing: this dock is mounted on every
+  // authenticated route, and a cluster whose ml-engine has no thread store genuinely has no
+  // threads. It must not degrade to polling, which cannot resolve a conversation id at all.
+  async listThreads(signal?: AbortSignal): Promise<CopilotThread[]> {
+    try {
+      return await (this.resolved ?? this.streaming).listThreads(signal)
+    } catch (error) {
+      if (isRouteMissing(error)) return []
+      throw error
+    }
   }
 
   async fetchThread(threadId: string, signal?: AbortSignal): Promise<CopilotTranscriptTurn[]> {
     const target = this.resolved ?? this.streaming
-    return target.fetchThread ? target.fetchThread(threadId, signal) : []
+    if (!target.fetchThread) return []
+    try {
+      return await target.fetchThread(threadId, signal)
+    } catch (error) {
+      if (isRouteMissing(error)) return []
+      throw error
+    }
   }
-}
-
-function isRouteMissing(error: unknown): boolean {
-  return error instanceof CopilotHttpError && error.isRouteMissing
 }

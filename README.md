@@ -134,6 +134,12 @@ There are two wire protocols behind one event vocabulary, and the difference is 
 switches permanently to the agentic contract for the life of the tab. Pin it with
 `transport: 'agentic'` to skip the probe entirely, or `'sse'` to require streaming.
 
+The thread reads are the exception to that switch. `listThreads` and `fetchThread` answer with an
+empty result on a missing route rather than throwing or degrading: a thread id is a Conversation
+id, which the agentic resource cannot resolve, and a cluster whose ml-engine serves no thread store
+genuinely has no threads. That keeps an always-mounted dock quiet on a cluster that has not shipped
+the copilot routes yet. Anything that is not a missing route still raises.
+
 ### The routes, as ml-engine actually registers them
 
 Verified against `service/urls.py`, `service/views.py`, `service/serializers.py` and

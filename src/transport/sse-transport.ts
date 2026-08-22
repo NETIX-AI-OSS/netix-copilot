@@ -5,7 +5,14 @@
 import type { CopilotThread, JsonObject, SendTurnInput } from '../types'
 import { decodeFrame, decodePolledEvent } from './decode'
 import type { HttpConfig } from './http'
-import { buildHeaders, CopilotHttpError, joinUrl, request, requestJson } from './http'
+import {
+  buildHeaders,
+  CopilotHttpError,
+  isRouteMissing,
+  joinUrl,
+  request,
+  requestJson,
+} from './http'
 import type { RunSnapshot } from './run-diff'
 import { decodeCursor, diffRunSnapshot, isTerminalStatus } from './run-diff'
 import { readSseStream, SseParser } from './sse'
@@ -135,9 +142,7 @@ export class SseTransport implements CopilotTransport {
     const path = fillTemplate(this.endpoints.threadTurns, {
       threadId: encodeURIComponent(threadId),
     })
-    const payload = await requestJson<unknown>(this.config, path, {
-      ...(signal ? { signal } : {}),
-    })
+    const payload = await this.readOrEmpty<unknown>(path, signal)
     const rows = Array.isArray(payload)
       ? payload
       : isRecord(payload) && Array.isArray(payload.results)
@@ -147,9 +152,7 @@ export class SseTransport implements CopilotTransport {
   }
 
   async listThreads(signal?: AbortSignal): Promise<CopilotThread[]> {
-    const payload = await requestJson<unknown>(this.config, this.endpoints.threads, {
-      ...(signal ? { signal } : {}),
-    })
+    const payload = await this.readOrEmpty<unknown>(this.endpoints.threads, signal)
     const rows = Array.isArray(payload)
       ? payload
       : isRecord(payload) && Array.isArray(payload.results)
@@ -176,6 +179,17 @@ export class SseTransport implements CopilotTransport {
     })
   }
 
+  // A thread read that 404s means this cluster serves no thread store, which is an empty
+  // history rather than a failure. The dock is mounted on every route, so it must not throw.
+  private async readOrEmpty<T>(path: string, signal?: AbortSignal): Promise<T | undefined> {
+    try {
+      return await requestJson<T>(this.config, path, { ...(signal ? { signal } : {}) })
+    } catch (error) {
+      if (isRouteMissing(error)) return undefined
+      throw error
+    }
+  }
+
   async consumeRun(options: ConsumeRunOptions): Promise<void> {
     options.onTransportChange?.('sse')
     try {
@@ -183,7 +197,7 @@ export class SseTransport implements CopilotTransport {
     } catch (error) {
       if (options.signal.aborted) return
       // No stream to tail: the run itself is still readable, so fall back to polling the turn.
-      if (error instanceof CopilotHttpError && error.isRouteMissing) {
+      if (isRouteMissing(error)) {
         await this.consumeByCursorPolling(options)
         return
       }

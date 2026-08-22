@@ -95,6 +95,7 @@ export {
   diffRunSnapshot,
   encodeCursor,
   formatResultCell,
+  isRouteMissing,
   isTerminalEvent,
   isTerminalStatus,
   newIdempotencyKey,

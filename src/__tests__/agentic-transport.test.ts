@@ -11,7 +11,7 @@ import {
   encodeCursor,
 } from '../transport/agentic-transport'
 import type { EnvelopedEvent } from '../types'
-import { instantSleep, jsonResponse } from './helpers'
+import { errorResponse, instantSleep, jsonResponse } from './helpers'
 
 function transportWith(responses: Response[], overrides = {}) {
   const fetchImpl = vi.fn(async () => responses.shift() ?? jsonResponse({ status: 1 }))
@@ -35,6 +35,20 @@ async function collect(transport: AgenticTransport, turnId = '101'): Promise<Env
   })
   return events
 }
+
+describe('AgenticTransport thread reads', () => {
+  // Same rule as the streaming transport: a 404 is a cluster with no thread store, not a failure.
+  it('reads an empty list and an empty transcript when the route is missing', async () => {
+    const { transport } = transportWith([errorResponse(404), errorResponse(404)])
+    expect(await transport.listThreads()).toEqual([])
+    expect(await transport.fetchThread('4')).toEqual([])
+  })
+
+  it('still raises anything that is not a missing route', async () => {
+    const { transport } = transportWith([errorResponse(500, 'boom')])
+    await expect(transport.listThreads()).rejects.toThrow(/status 500/)
+  })
+})
 
 describe('AgenticTransport.createTurn', () => {
   it('posts the org and user the live endpoint demands', async () => {

@@ -18,6 +18,11 @@ export class CopilotHttpError extends Error {
   }
 }
 
+// A 404/405/501 says the route is not deployed on this cluster, not that the request was bad.
+export function isRouteMissing(error: unknown): boolean {
+  return error instanceof CopilotHttpError && error.isRouteMissing
+}
+
 export type CopilotFetch = (input: string, init?: RequestInit) => Promise<Response>
 
 export type AuthTokenProvider = () => string | null | undefined | Promise<string | null | undefined>

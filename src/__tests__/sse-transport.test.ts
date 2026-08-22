@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createTransport } from '../transport'
 import { AgenticTransport } from '../transport/agentic-transport'
 import { AutoTransport } from '../transport/auto-transport'
+import { CopilotHttpError } from '../transport/http'
 import { DEFAULT_SSE_ENDPOINTS, SseTransport } from '../transport/sse-transport'
 import { StreamInterruptedError } from '../transport/types'
 import type { EnvelopedEvent } from '../types'
@@ -406,6 +407,28 @@ describe('SseTransport', () => {
     expect(await transport.fetchThread('3')).toEqual([])
   })
 
+  // The dock is mounted on every authenticated route. A cluster whose ml-engine has not shipped
+  // the copilot routes yet answers 404 here, and that is "no threads", not a broken surface.
+  it('reads an empty thread list from a cluster that serves no thread route', async () => {
+    const { transport } = sseTransport([errorResponse(404)])
+    expect(await transport.listThreads()).toEqual([])
+  })
+
+  it('reads an empty transcript from a cluster that serves no thread route', async () => {
+    const { transport } = sseTransport([errorResponse(404)])
+    expect(await transport.fetchThread('12')).toEqual([])
+  })
+
+  it('still raises a real thread-list failure rather than posing as no history', async () => {
+    const { transport } = sseTransport([errorResponse(500, 'boom')])
+    await expect(transport.listThreads()).rejects.toThrow(/status 500/)
+  })
+
+  it('still raises a real transcript failure rather than posing as no history', async () => {
+    const { transport } = sseTransport([errorResponse(500, 'boom')])
+    await expect(transport.fetchThread('12')).rejects.toThrow(/status 500/)
+  })
+
   it('swallows a failing cancel, since the run ends server-side anyway', async () => {
     const { transport } = sseTransport([errorResponse(500)])
     await expect(transport.cancelTurn('t1')).resolves.toBeUndefined()
@@ -466,6 +489,61 @@ describe('AutoTransport', () => {
       new AgenticTransport({ baseUrl: 'https://ml.example.com' }),
     )
     await expect(auto.createTurn({ prompt: 'x' })).rejects.toThrow(/status 500/)
+  })
+
+  // These two are the always-on failure. The create and the stream both degrade on a missing
+  // route; the thread reads used to call straight through, so opening the dock's history on a
+  // cluster without the copilot routes rejected instead of showing an empty list.
+  it('reads an empty thread list when the route is missing, without degrading', async () => {
+    const sseFetch = vi.fn(async () => errorResponse(404))
+    const agenticFetch = vi.fn(async () => jsonResponse({ results: [] }))
+    const auto = new AutoTransport(
+      new SseTransport({ baseUrl: 'https://ml.example.com', fetchImpl: sseFetch as never }),
+      new AgenticTransport({ baseUrl: 'https://ml.example.com', fetchImpl: agenticFetch as never }),
+    )
+    expect(await auto.listThreads()).toEqual([])
+    // A conversation id is unreadable on the poll contract, so degrading there is never right.
+    expect(agenticFetch).not.toHaveBeenCalled()
+    expect(auto.selected).toBeUndefined()
+  })
+
+  it('reads an empty transcript when the route is missing, without degrading', async () => {
+    const sseFetch = vi.fn(async () => errorResponse(404))
+    const agenticFetch = vi.fn(async () => jsonResponse({ id: 4, prompt_text: 'earlier' }))
+    const auto = new AutoTransport(
+      new SseTransport({ baseUrl: 'https://ml.example.com', fetchImpl: sseFetch as never }),
+      new AgenticTransport({ baseUrl: 'https://ml.example.com', fetchImpl: agenticFetch as never }),
+    )
+    expect(await auto.fetchThread('12')).toEqual([])
+    expect(agenticFetch).not.toHaveBeenCalled()
+    expect(auto.selected).toBeUndefined()
+  })
+
+  it('raises a real thread-read failure instead of reporting no history', async () => {
+    const auto = new AutoTransport(
+      new SseTransport({
+        baseUrl: 'https://ml.example.com',
+        fetchImpl: (async () => errorResponse(500)) as never,
+      }),
+      new AgenticTransport({ baseUrl: 'https://ml.example.com' }),
+    )
+    await expect(auto.listThreads()).rejects.toThrow(/status 500/)
+    await expect(auto.fetchThread('12')).rejects.toThrow(/status 500/)
+  })
+
+  it('degrades a thread read on a host transport that cannot fetch history', async () => {
+    const bare = {
+      name: 'sse' as const,
+      createTurn: async () => ({ turnId: '1' }),
+      consumeRun: async () => undefined,
+      cancelTurn: async () => undefined,
+      respondToApproval: async () => undefined,
+      listThreads: async () => {
+        throw new CopilotHttpError(404, '')
+      },
+    }
+    const auto = new AutoTransport(bare, bare)
+    expect(await auto.listThreads()).toEqual([])
   })
 })
 

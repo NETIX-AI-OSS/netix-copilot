@@ -107,6 +107,58 @@ async function startRunWithApproval(transport: DecisionTransport) {
   })
 }
 
+// The reason this matters is the mount pattern: both host apps mount the dock on every
+// authenticated route, not on a few leaf pages. ml-engine's main carries no copilot routes, so on
+// a cluster that has not shipped them the thread routes are 404s on every page load.
+describe('the always-on dock against a cluster with no copilot routes', () => {
+  beforeEach(() => {
+    engineRef = undefined
+    window.localStorage.clear()
+  })
+
+  function mountWithThreads(logger: { warn: () => void; error: () => void }) {
+    const transport = new AutoTransport(
+      new SseTransport({
+        baseUrl: 'https://ml.example.com',
+        fetchImpl: (async () => errorResponse(404)) as never,
+      }),
+      new AgenticTransport({ baseUrl: 'https://ml.example.com' }),
+    )
+    return render(
+      <CopilotProvider
+        config={{ baseUrl: 'https://ml.example.com', logger }}
+        adapters={testAdapters()}
+        transport={transport}
+      >
+        <Probe />
+        <CopilotDock defaultOpen />
+      </CopilotProvider>,
+    )
+  }
+
+  it('shows an empty conversation list rather than surfacing the 404', async () => {
+    const logger = { warn: vi.fn(), error: vi.fn() }
+    mountWithThreads(logger)
+    expect(await screen.findByText('No earlier conversations.')).toBeTruthy()
+    expect(engineRef?.getSnapshot().threadsLoaded).toBe(true)
+    expect(engineRef?.getSnapshot().threads).toEqual([])
+    // Empty is the answer, so nothing is reported: this would otherwise fire on every page load.
+    expect(logger.warn).not.toHaveBeenCalled()
+    expect(logger.error).not.toHaveBeenCalled()
+  })
+
+  it('restores a deep-linked thread to an empty panel rather than throwing', async () => {
+    const logger = { warn: vi.fn(), error: vi.fn() }
+    mountWithThreads(logger)
+    await act(async () => {
+      await engineRef?.loadThread('12')
+    })
+    expect(engineRef?.getSnapshot().turns).toEqual([])
+    expect(engineRef?.getSnapshot().threadLoading).toBe(false)
+    expect(logger.warn).not.toHaveBeenCalled()
+  })
+})
+
 describe('ApprovalCard decisions', () => {
   beforeEach(() => {
     engineRef = undefined
