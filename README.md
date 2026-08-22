@@ -130,9 +130,14 @@ There are two wire protocols behind one event vocabulary, and the difference is 
 | `agentic` | `POST /api/agentic-ml-request/`, `GET /api/agentic-ml-request/{id}/`, `POST /api/agentic-ml-request/{id}/reply/` | **Live.** What every older chat drawer calls, and the fallback for a deployment without the copilot routes.      |
 | `sse`     | `POST /api/copilot-turn/` then `GET /api/copilot/turn/{id}/events`                                               | **Live.** The create landed with ml-engine's copilot admin API, so streaming is the path `auto` now resolves to. |
 
-`transport: 'auto'` (the default) probes the streaming create endpoint once, and on a 404/405/501
-switches permanently to the agentic contract for the life of the tab. Pin it with
-`transport: 'agentic'` to skip the probe entirely, or `'sse'` to require streaming.
+`transport: 'auto'` (the default) tries the streaming create once and remembers the answer for the
+life of the tab. Because that memory is durable, the answer has to be about the route rather than
+about the resource. A 404 carrying a DRF `detail` — `NotFound("No such thread.")`, which is what a
+stale `?thread=` bookmark produces — is a resource error and is raised with that detail as its
+message. A 404 that no application answered is corroborated against `GET /api/copilot-conversation/`
+before streaming is given up. `CopilotHttpError.isRouteMissing` and `.isResourceError` are those two
+questions, and a transport can answer the first for itself by implementing the optional
+`isDeployed()`. Pin `transport: 'agentic'` to skip all of it, or `'sse'` to require streaming.
 
 The thread reads are the exception to that switch. `listThreads` and `fetchThread` answer with an
 empty result on a missing route rather than throwing or degrading: a thread id is a Conversation
@@ -183,6 +188,16 @@ without a word, which is why run-level facts that have no event of their own —
 `execution_time`, `result_data` — ride on the terminal `done` or `error` payload instead of on a
 twelfth event name. `CopilotRunSummary` is that payload; `RunState.tools`, `RunState.executionMs`
 and `RunState.resultData` are where it lands.
+
+What ml-engine actually puts on the wire is thinner than that: `done` carries `status`, `turn_id`,
+`execution_time`, `chart_available` and `response_chars`, and `error` carries a code and a detail.
+Neither carries `tools` or the tool output behind the result table, and neither can — `events.py`
+replaces any event over `COPILOT_EVENT_MAX_BYTES` with a truncation marker, so a fattened frame
+would lose the whole run summary rather than shorten it. `SseTransport` therefore holds the terminal
+event back for one read of `GET /api/copilot-turn/{turnId}/` and merges in what the frame could not
+carry. The frame wins on every key it did send, a failed read still finishes the run, and exactly
+one terminal event is emitted, already complete — so a live run shows its tools badge and its result
+table with the answer, and nothing above the transport ever clears the panel to get them.
 
 ### Approvals
 

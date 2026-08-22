@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import { CopilotEngine } from '../runtime/engine'
 import { createTransport } from '../transport'
 import { AgenticTransport } from '../transport/agentic-transport'
 import { AutoTransport } from '../transport/auto-transport'
 import { CopilotHttpError } from '../transport/http'
 import { DEFAULT_SSE_ENDPOINTS, SseTransport } from '../transport/sse-transport'
+import type { CopilotTransport } from '../transport/types'
 import { StreamInterruptedError } from '../transport/types'
 import type { EnvelopedEvent } from '../types'
 import { errorResponse, frames, instantSleep, jsonResponse, sseResponse } from './helpers'
@@ -159,6 +161,123 @@ describe('SseTransport', () => {
   it('propagates a server error that is not a missing route', async () => {
     const { transport } = sseTransport([errorResponse(500, 'boom')])
     await expect(collect(transport)).rejects.toThrow(/status 500/)
+  })
+
+  // ml-engine's DONE frame is exactly these five keys -- service/utils/agentic_worker.py -- and
+  // `tools` and the tool output are not among them: encode_payload replaces any event over
+  // COPILOT_EVENT_MAX_BYTES with a truncation marker, so the answer's artifacts cannot ride there.
+  // Before this, a live run showed no tools badge and no result table until the thread was re-read.
+  it('completes the terminal event from the stored turn the frame could not carry', async () => {
+    const { transport, fetchImpl } = sseTransport([
+      sseResponse(
+        frames(
+          { event: 'run_started', data: { turn_id: 't1' } },
+          { event: 'message_delta', data: { text: 'AHU-1 has two open work orders.' } },
+          {
+            event: 'done',
+            data: {
+              status: 'completed',
+              turn_id: 't1',
+              execution_time: 2.5,
+              chart_available: false,
+              response_chars: 31,
+            },
+          },
+        ),
+      ),
+      jsonResponse({
+        id: 't1',
+        status: 1,
+        tools: ['call_work_orders_agent', 'work_order_retrieve'],
+        execution_log: [
+          {
+            tool: 'work_order_retrieve',
+            call_id: 'c1',
+            output: { columns: ['id', 'title'], data: [{ id: 55, title: 'Replace filter' }] },
+          },
+        ],
+      }),
+    ])
+    const events = await collect(transport)
+    expect((fetchImpl.mock.calls[1] as [string])[0]).toBe(
+      'https://ml.example.com/api/copilot-turn/t1/',
+    )
+    const done = events[events.length - 1]?.event
+    expect(done?.type).toBe('done')
+    expect(done).toMatchObject({
+      tools: ['call_work_orders_agent', 'work_order_retrieve'],
+      executionMs: 2500,
+    })
+    expect((done as { resultData?: { rows: unknown[] } }).resultData?.rows).toEqual([
+      { id: 55, title: 'Replace filter' },
+    ])
+  })
+
+  // The run summary rides on `error` too, and that frame is thinner still: a code and a detail.
+  it('completes a failed run the same way', async () => {
+    const { transport } = sseTransport([
+      sseResponse(frames({ event: 'error', data: { code: 'failed', detail: 'The run failed.' } })),
+      jsonResponse({ id: 't1', status: 2, tools: ['call_facilities_agent'], execution_time: 1 }),
+    ])
+    const events = await collect(transport)
+    expect(events[events.length - 1]?.event).toMatchObject({
+      type: 'error',
+      tools: ['call_facilities_agent'],
+      executionMs: 1000,
+    })
+  })
+
+  // Nothing above the transport sees a half-finished run, so the terminal event is emitted once,
+  // already complete, and the transcript is never cleared to repopulate it.
+  it('emits one terminal event, after it is complete', async () => {
+    const { transport } = sseTransport([
+      sseResponse(frames({ event: 'done', data: { turn_id: 't1' } })),
+      jsonResponse({ id: 't1', status: 1, tools: ['work_order_retrieve'] }),
+    ])
+    const events = await collect(transport)
+    expect(events.filter((entry) => entry.event.type === 'done')).toHaveLength(1)
+    expect(events[events.length - 1]?.event).toMatchObject({ tools: ['work_order_retrieve'] })
+  })
+
+  // The frame is authoritative for what it actually sent; the stored row only fills the gaps.
+  it('never overwrites what the terminal frame already reported', async () => {
+    const { transport, fetchImpl } = sseTransport([
+      sseResponse(
+        frames({
+          event: 'done',
+          data: {
+            turn_id: 't1',
+            tools: ['from_the_wire'],
+            execution_time: 9,
+            result_data: { columns: ['a'], data: [{ a: 1 }] },
+          },
+        }),
+      ),
+    ])
+    const events = await collect(transport)
+    expect(events[0]?.event).toMatchObject({ tools: ['from_the_wire'], executionMs: 9000 })
+    // Complete on arrival, so nothing is read back: this is what a fattened frame would buy.
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
+  // The badges are an enrichment. A run that answered must not fail because the read-back did.
+  it('still finishes the run when the completing read fails', async () => {
+    const { transport } = sseTransport([
+      sseResponse(frames({ event: 'done', data: { turn_id: 't1', execution_time: 2 } })),
+      errorResponse(500, 'boom'),
+    ])
+    const events = await collect(transport)
+    expect(events[0]?.event).toMatchObject({ type: 'done', executionMs: 2000 })
+    expect((events[0]?.event as { tools?: string[] }).tools).toBeUndefined()
+  })
+
+  // A stream that dies before its terminal frame is still a resumable interruption, not a run that
+  // quietly finished, and holding the terminal back must not blur the two.
+  it('still reports an interrupted stream as interrupted', async () => {
+    const { transport } = sseTransport([
+      sseResponse(frames({ event: 'message_delta', data: { text: 'p' }, id: 'e-3' })),
+    ])
+    await expect(collect(transport)).rejects.toBeInstanceOf(StreamInterruptedError)
   })
 
   // ml-engine registers no cursor-poll sibling, so the fallback polls the run's own detail route
@@ -476,8 +595,104 @@ describe('AutoTransport', () => {
     )
     await auto.createTurn({ prompt: 'one' })
     await auto.createTurn({ prompt: 'two' })
-    expect(sseFetch).toHaveBeenCalledTimes(1)
+    // The create, then the one corroborating read. The second turn asks streaming nothing at all.
+    expect(sseFetch).toHaveBeenCalledTimes(2)
     expect(agenticFetch).toHaveBeenCalledTimes(2)
+  })
+
+  // The reported defect. A stale `?thread=` bookmark names a conversation that is gone or was
+  // never the caller's, ml-engine answers NotFound("No such thread."), and reading that as "the
+  // streaming routes are not deployed" cost that tab streaming for the rest of its life -- while
+  // the reply went to the agentic contract under an id that resource does not know.
+  it('keeps streaming when a create 404s over the thread rather than the route', async () => {
+    const sseFetch = vi.fn(async () =>
+      errorResponse(404, JSON.stringify({ detail: 'No such thread.' })),
+    )
+    const agenticFetch = vi.fn(async () => jsonResponse({ id: 12, status: 0 }, 201))
+    const auto = new AutoTransport(
+      new SseTransport({ baseUrl: 'https://ml.example.com', fetchImpl: sseFetch as never }),
+      new AgenticTransport({
+        baseUrl: 'https://ml.example.com',
+        fetchImpl: agenticFetch as never,
+        getIdentity: () => ({ organizationId: 1, userId: 2 }),
+      }),
+    )
+    await expect(auto.createTurn({ prompt: 'x', threadId: '99' })).rejects.toThrow(
+      /No such thread\./,
+    )
+    expect(auto.selected).toBeUndefined()
+    expect(agenticFetch).not.toHaveBeenCalled()
+    // One request only: a bodied DRF error settles it, so there is nothing to corroborate.
+    expect(sseFetch).toHaveBeenCalledTimes(1)
+  })
+
+  // Even a bodiless 404 is only one request's answer. The contract itself is asked before a tab
+  // gives up streaming, because that decision lasts as long as the tab does.
+  it('corroborates a bare 404 against the contract before giving up streaming', async () => {
+    const sseFetch = vi.fn(async (url: string) =>
+      url.includes('copilot-conversation') ? jsonResponse({ results: [] }) : errorResponse(404),
+    )
+    const agenticFetch = vi.fn(async () => jsonResponse({ id: 12, status: 0 }, 201))
+    const auto = new AutoTransport(
+      new SseTransport({ baseUrl: 'https://ml.example.com', fetchImpl: sseFetch as never }),
+      new AgenticTransport({
+        baseUrl: 'https://ml.example.com',
+        fetchImpl: agenticFetch as never,
+        getIdentity: () => ({ organizationId: 1, userId: 2 }),
+      }),
+    )
+    await expect(auto.createTurn({ prompt: 'x' })).rejects.toThrow(/status 404/)
+    expect((sseFetch.mock.calls[1] as [string])[0]).toBe(
+      'https://ml.example.com/api/copilot-conversation/',
+    )
+    expect(auto.selected).toBeUndefined()
+    expect(agenticFetch).not.toHaveBeenCalled()
+  })
+
+  // The probe answers about the contract, so anything other than a missing route means deployed.
+  it('reads an authentication failure on the probe as a route that exists', async () => {
+    const sseFetch = vi.fn(async (url: string) =>
+      url.includes('copilot-conversation') ? errorResponse(403, 'denied') : errorResponse(404),
+    )
+    const auto = new AutoTransport(
+      new SseTransport({ baseUrl: 'https://ml.example.com', fetchImpl: sseFetch as never }),
+      new AgenticTransport({ baseUrl: 'https://ml.example.com' }),
+    )
+    await expect(auto.createTurn({ prompt: 'x' })).rejects.toThrow(/status 404/)
+    expect(auto.selected).toBeUndefined()
+  })
+
+  // consumeRun infers the same durable fact from the same kind of failure, so it asks the same way.
+  it('keeps streaming when a run read 404s over the run rather than the route', async () => {
+    const streaming: CopilotTransport = {
+      name: 'sse',
+      createTurn: async () => ({ turnId: '1' }),
+      consumeRun: async () => {
+        throw new CopilotHttpError(404, JSON.stringify({ detail: 'Not found.' }))
+      },
+      cancelTurn: async () => undefined,
+      respondToApproval: async () => undefined,
+      listThreads: async () => [],
+      isDeployed: async () => true,
+    }
+    const agenticFetch = vi.fn(async () => jsonResponse({ status: 1 }))
+    const auto = new AutoTransport(
+      streaming,
+      new AgenticTransport({
+        baseUrl: 'https://ml.example.com',
+        fetchImpl: agenticFetch as never,
+        sleepImpl: instantSleep,
+      }),
+    )
+    await expect(
+      auto.consumeRun({
+        turnId: '1',
+        signal: new AbortController().signal,
+        onEvent: () => undefined,
+      }),
+    ).rejects.toThrow(/Not found\./)
+    expect(auto.selected).toBeUndefined()
+    expect(agenticFetch).not.toHaveBeenCalled()
   })
 
   it('propagates a real failure rather than masking it as a missing route', async () => {
@@ -544,6 +759,57 @@ describe('AutoTransport', () => {
     }
     const auto = new AutoTransport(bare, bare)
     expect(await auto.listThreads()).toEqual([])
+  })
+})
+
+// The regression cafm-v2-ui hit head-on, at the level the user actually sees it: a live run that
+// finishes with no tools badge and no result table, and a panel that must not blank to get them.
+describe('a live streaming run through the engine', () => {
+  it('shows the tools and the table when the run ends, without ever emptying the panel', async () => {
+    const responses = [
+      jsonResponse(
+        { turn_id: 't1', thread_id: '12', stream_url: '/api/copilot/turn/t1/events' },
+        201,
+      ),
+      sseResponse(
+        frames(
+          { event: 'run_started', data: { turn_id: 't1' } },
+          { event: 'message_delta', data: { text: 'Two open work orders.' } },
+          { event: 'done', data: { status: 'completed', turn_id: 't1', execution_time: 2 } },
+        ),
+      ),
+      jsonResponse({
+        id: 't1',
+        status: 1,
+        tools: ['work_order_retrieve'],
+        execution_log: [
+          {
+            tool: 'work_order_retrieve',
+            call_id: 'c1',
+            output: { columns: ['id'], data: [{ id: 55 }] },
+          },
+        ],
+      }),
+    ]
+    const engine = new CopilotEngine({
+      transport: new SseTransport({
+        baseUrl: 'https://ml.example.com',
+        fetchImpl: (async () => responses.shift() ?? errorResponse(500)) as never,
+        sleepImpl: instantSleep,
+      }),
+    })
+    const widths: number[] = []
+    engine.subscribe(() => widths.push(engine.getSnapshot().turns.length))
+
+    await engine.send('why is AHU-1 offline?')
+    await vi.waitFor(() => expect(engine.activeRun?.status).toBe('done'))
+
+    expect(engine.activeRun?.tools).toEqual(['work_order_retrieve'])
+    expect(engine.activeRun?.resultData?.rows).toEqual([{ id: 55 }])
+    expect(engine.activeRun?.executionMs).toBe(2000)
+    // The turn is added and never taken away: no re-read of the thread, so nothing to flash empty.
+    expect(widths.every((count) => count === 1)).toBe(true)
+    engine.dispose()
   })
 })
 

@@ -1,7 +1,8 @@
 // The transport contract, over two wire protocols that both speak the copilot event vocabulary in ../types.
 // 'sse' is POST /api/copilot-turn/ then GET /api/copilot/turn/{id}/events, the streaming copilot contract.
 // 'agentic' is POST /api/agentic-ml-request/ then polling its detail route, the contract the older chat surfaces call.
-// 'auto' probes the streaming create once and remembers the answer.
+// 'auto' tries the streaming create once and remembers the answer, corroborating a missing-route
+// reply against the contract itself before it settles on the poll contract.
 
 import type { CopilotThread, EnvelopedEvent, RunState, SendTurnInput } from '../types'
 
@@ -48,6 +49,10 @@ export interface CopilotTransport {
   // Optional so a host transport written against v0.1.0 still satisfies the interface. A
   // transport that cannot rebuild history simply omits it and selecting a thread starts empty.
   fetchThread?(threadId: string, signal?: AbortSignal): Promise<CopilotTranscriptTurn[]>
+  // Does this cluster serve this transport's contract at all? A capability question, asked of the
+  // contract itself, so that giving up on a transport for the life of a tab never rests on how one
+  // request happened to fail. Optional for the same reason fetchThread is.
+  isDeployed?(signal?: AbortSignal): Promise<boolean>
 }
 
 const TERMINAL_EVENTS = new Set(['done', 'error', 'cancelled'])

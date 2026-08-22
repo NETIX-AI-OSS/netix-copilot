@@ -2,7 +2,7 @@
 // Every route below is one ml-engine registers: the DRF router mounts `copilot-turn` and `copilot-conversation`,
 // and the SSE tail is served by the ASGI path router in service/mcp_server/asgi.py, ahead of Django and with no trailing slash.
 
-import type { CopilotThread, JsonObject, SendTurnInput } from '../types'
+import type { CopilotThread, EnvelopedEvent, JsonObject, SendTurnInput } from '../types'
 import { decodeFrame, decodePolledEvent } from './decode'
 import type { HttpConfig } from './http'
 import {
@@ -16,7 +16,8 @@ import {
 import type { RunSnapshot } from './run-diff'
 import { decodeCursor, diffRunSnapshot, isTerminalStatus } from './run-diff'
 import { readSseStream, SseParser } from './sse'
-import { turnFromRow } from './transcript'
+import type { CopilotRunRow } from './transcript'
+import { readRunSummary, turnFromRow } from './transcript'
 import type {
   ConsumeRunOptions,
   CopilotTranscriptTurn,
@@ -190,6 +191,18 @@ export class SseTransport implements CopilotTransport {
     }
   }
 
+  // Whether this cluster serves the copilot contract, asked of a route that takes no arguments and
+  // so cannot answer about a resource. A missing route here is the one reply that proves absence;
+  // a list, a 401 or a 500 all mean something on the other end is serving these paths.
+  async isDeployed(signal?: AbortSignal): Promise<boolean> {
+    try {
+      await request(this.config, this.endpoints.threads, { ...(signal ? { signal } : {}) })
+      return true
+    } catch (error) {
+      return !isRouteMissing(error)
+    }
+  }
+
   async consumeRun(options: ConsumeRunOptions): Promise<void> {
     options.onTransportChange?.('sse')
     try {
@@ -236,19 +249,62 @@ export class SseTransport implements CopilotTransport {
 
     const parser = new SseParser()
     parser.setLastEventId(options.lastEventId)
-    let terminal = false
+    let terminal: EnvelopedEvent | undefined
     await readSseStream(
       response.body,
       (frame) => {
         const decoded = decodeFrame(frame)
         if (!decoded) return
-        if (isTerminalEvent(decoded)) terminal = true
+        // The terminal frame is held back, because what it is missing is what the dock shows once
+        // the run stops. Everything before it goes out the moment it arrives, as it always did.
+        if (isTerminalEvent(decoded)) {
+          terminal = decoded
+          return
+        }
         options.onEvent(decoded)
       },
       { parser, signal: options.signal },
     )
-    if (!terminal && !options.signal.aborted) {
+    if (terminal === undefined) {
+      if (options.signal.aborted) return
       throw new StreamInterruptedError(parser.getLastEventId())
+    }
+    options.onEvent(
+      options.signal.aborted ? terminal : await this.completeTerminal(terminal, options),
+    )
+  }
+
+  // ml-engine's `done` frame carries status, turn_id, execution_time, chart_available and
+  // response_chars, and its `error` frame carries a code and a detail. Neither carries `tools` or
+  // the tool output behind the result table: service/copilot/events.py replaces any event over
+  // COPILOT_EVENT_MAX_BYTES with a truncation marker, so a fattened frame would lose the whole run
+  // summary rather than part of it. The stored turn keeps both, so it is read once, here, and
+  // merged into the terminal event. Nothing above the transport sees a partly-finished run, and
+  // the badges and the table appear with the answer instead of only after a thread is re-read.
+  private async completeTerminal(
+    terminal: EnvelopedEvent,
+    options: ConsumeRunOptions,
+  ): Promise<EnvelopedEvent> {
+    const event = terminal.event
+    if (event.type !== 'done' && event.type !== 'error') return terminal
+    if (event.tools !== undefined && event.resultData !== undefined) return terminal
+    const row = await this.readRunRow(options.turnId, options.signal)
+    if (row === undefined) return terminal
+    // The wire wins wherever the two agree to disagree; the row only fills what never arrived.
+    return { ...terminal, event: { ...readRunSummary(row), ...event } }
+  }
+
+  // An enrichment, never a dependency: a run that finished must not fail because this read did.
+  private async readRunRow(
+    turnId: string,
+    signal: AbortSignal,
+  ): Promise<CopilotRunRow | undefined> {
+    const path = fillTemplate(this.endpoints.pollTurn, { turnId })
+    try {
+      const payload = await requestJson<unknown>(this.config, path, { signal })
+      return isRecord(payload) ? (payload as CopilotRunRow) : undefined
+    } catch {
+      return undefined
     }
   }
 

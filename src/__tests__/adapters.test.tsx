@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { CopilotProvider, useCopilotEngine, useCopilotState } from '../adapters/context'
 import { buildScope, resolveCopilotPrompt } from '../adapters/types'
 import { Composer } from '../components/composer'
-import { CopilotHttpError, joinUrl, requestJson } from '../transport/http'
+import { CopilotHttpError, isResourceError, joinUrl, requestJson } from '../transport/http'
 import type { ConsumeRunOptions, CopilotTransport, CreatedTurn } from '../transport/types'
 import type { SendTurnInput } from '../types'
 import { createFallbackTranslate, interpolate } from '../ui/i18n'
@@ -132,6 +132,48 @@ describe('http helpers', () => {
     expect(new CopilotHttpError(501, '').isRouteMissing).toBe(true)
     expect(new CopilotHttpError(500, '').isRouteMissing).toBe(false)
     expect(new CopilotHttpError(403, '').isRouteMissing).toBe(false)
+  })
+
+  // ml-engine's ConversationTurnViewSet._thread raises NotFound("No such thread.") when a create
+  // names a thread that is missing or belongs to someone else. That is a route which is deployed,
+  // ran, and rejected one resource -- the opposite of the reply that justifies degrading a tab.
+  it('reads a DRF 404 as a resource error, not as an absent route', () => {
+    const error = new CopilotHttpError(404, JSON.stringify({ detail: 'No such thread.' }))
+    expect(error.isRouteMissing).toBe(false)
+    expect(error.isResourceError).toBe(true)
+    expect(error.detail).toBe('No such thread.')
+    expect(isResourceError(error)).toBe(true)
+  })
+
+  // The detail is what the user is owed. Without it a stale bookmark reads as a bare status code.
+  it('speaks the detail the application sent rather than the status line', () => {
+    expect(new CopilotHttpError(404, JSON.stringify({ detail: 'No such thread.' })).message).toBe(
+      'No such thread.',
+    )
+    expect(new CopilotHttpError(404, '').message).toMatch(/status 404/)
+  })
+
+  it('still reads a router or proxy 404 as an absent route', () => {
+    for (const body of ['', '<html><title>404 Not Found</title></html>', 'no healthy upstream']) {
+      expect(new CopilotHttpError(404, body).isRouteMissing).toBe(true)
+      expect(isResourceError(new CopilotHttpError(404, body))).toBe(false)
+    }
+  })
+
+  // A JSON body that is not a DRF error object proves nothing about who answered.
+  it('does not mistake any JSON body for an application answer', () => {
+    expect(new CopilotHttpError(404, '[{"detail":"x"}]').isRouteMissing).toBe(true)
+    expect(new CopilotHttpError(404, '{"error":"nope"}').isRouteMissing).toBe(true)
+    expect(new CopilotHttpError(404, '{"detail":""}').isRouteMissing).toBe(true)
+    expect(new CopilotHttpError(404, '{"detail":{"nested":1}}').isRouteMissing).toBe(true)
+  })
+
+  // 405 and 501 answer about the contract, not the resource, so a detail changes nothing: a route
+  // that will not take this method is a contract this cluster does not serve.
+  it('keeps 405 and 501 fallback-worthy however they are worded', () => {
+    const notAllowed = JSON.stringify({ detail: 'Method "POST" not allowed.' })
+    expect(new CopilotHttpError(405, notAllowed).isRouteMissing).toBe(true)
+    expect(new CopilotHttpError(501, notAllowed).isRouteMissing).toBe(true)
   })
 
   it('treats an empty body as an empty object', async () => {

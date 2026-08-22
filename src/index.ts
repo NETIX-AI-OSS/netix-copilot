@@ -95,6 +95,7 @@ export {
   diffRunSnapshot,
   encodeCursor,
   formatResultCell,
+  isResourceError,
   isRouteMissing,
   isTerminalEvent,
   isTerminalStatus,
