@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.StreamInterruptedError = exports.NotStreamableError = exports.isTerminalEvent = exports.turnFromRow = exports.transcriptFromRequest = exports.SseTransport = exports.DEFAULT_SSE_ENDPOINTS = exports.SseParser = exports.readSseStream = exports.normalizeResultData = exports.formatResultCell = exports.CopilotHttpError = exports.decodePolledEvent = exports.decodeFrame = exports.AutoTransport = exports.encodeCursor = exports.DEFAULT_AGENTIC_ENDPOINTS = exports.decodeCursor = exports.AgenticTransport = exports.AGENTIC_STATUS = void 0;
+exports.StreamInterruptedError = exports.NotStreamableError = exports.newIdempotencyKey = exports.isTerminalEvent = exports.turnFromRow = exports.transcriptFromRequest = exports.SseTransport = exports.DEFAULT_SSE_ENDPOINTS = exports.SseParser = exports.readSseStream = exports.isTerminalStatus = exports.encodeCursor = exports.diffRunSnapshot = exports.decodeCursor = exports.normalizeResultData = exports.formatResultCell = exports.CopilotHttpError = exports.decodePolledEvent = exports.decodeFrame = exports.AutoTransport = exports.DEFAULT_AGENTIC_ENDPOINTS = exports.AgenticTransport = exports.AGENTIC_STATUS = void 0;
 exports.createTransport = createTransport;
 const agentic_transport_1 = require("./agentic-transport");
 const auto_transport_1 = require("./auto-transport");
@@ -41,9 +41,7 @@ function createTransport(config) {
 var agentic_transport_2 = require("./agentic-transport");
 Object.defineProperty(exports, "AGENTIC_STATUS", { enumerable: true, get: function () { return agentic_transport_2.AGENTIC_STATUS; } });
 Object.defineProperty(exports, "AgenticTransport", { enumerable: true, get: function () { return agentic_transport_2.AgenticTransport; } });
-Object.defineProperty(exports, "decodeCursor", { enumerable: true, get: function () { return agentic_transport_2.decodeCursor; } });
 Object.defineProperty(exports, "DEFAULT_AGENTIC_ENDPOINTS", { enumerable: true, get: function () { return agentic_transport_2.DEFAULT_AGENTIC_ENDPOINTS; } });
-Object.defineProperty(exports, "encodeCursor", { enumerable: true, get: function () { return agentic_transport_2.encodeCursor; } });
 var auto_transport_2 = require("./auto-transport");
 Object.defineProperty(exports, "AutoTransport", { enumerable: true, get: function () { return auto_transport_2.AutoTransport; } });
 var decode_1 = require("./decode");
@@ -54,6 +52,11 @@ Object.defineProperty(exports, "CopilotHttpError", { enumerable: true, get: func
 var result_data_1 = require("./result-data");
 Object.defineProperty(exports, "formatResultCell", { enumerable: true, get: function () { return result_data_1.formatResultCell; } });
 Object.defineProperty(exports, "normalizeResultData", { enumerable: true, get: function () { return result_data_1.normalizeResultData; } });
+var run_diff_1 = require("./run-diff");
+Object.defineProperty(exports, "decodeCursor", { enumerable: true, get: function () { return run_diff_1.decodeCursor; } });
+Object.defineProperty(exports, "diffRunSnapshot", { enumerable: true, get: function () { return run_diff_1.diffRunSnapshot; } });
+Object.defineProperty(exports, "encodeCursor", { enumerable: true, get: function () { return run_diff_1.encodeCursor; } });
+Object.defineProperty(exports, "isTerminalStatus", { enumerable: true, get: function () { return run_diff_1.isTerminalStatus; } });
 var sse_1 = require("./sse");
 Object.defineProperty(exports, "readSseStream", { enumerable: true, get: function () { return sse_1.readSseStream; } });
 Object.defineProperty(exports, "SseParser", { enumerable: true, get: function () { return sse_1.SseParser; } });
@@ -65,5 +68,6 @@ Object.defineProperty(exports, "transcriptFromRequest", { enumerable: true, get:
 Object.defineProperty(exports, "turnFromRow", { enumerable: true, get: function () { return transcript_1.turnFromRow; } });
 var types_1 = require("./types");
 Object.defineProperty(exports, "isTerminalEvent", { enumerable: true, get: function () { return types_1.isTerminalEvent; } });
+Object.defineProperty(exports, "newIdempotencyKey", { enumerable: true, get: function () { return types_1.newIdempotencyKey; } });
 Object.defineProperty(exports, "NotStreamableError", { enumerable: true, get: function () { return types_1.NotStreamableError; } });
 Object.defineProperty(exports, "StreamInterruptedError", { enumerable: true, get: function () { return types_1.StreamInterruptedError; } });

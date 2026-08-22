@@ -5,6 +5,44 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-08-22
+
+A wire-contract repair. ml-engine's copilot admin API added `POST /api/copilot-turn/`, and this
+SDK was still pointing its create at the blueprint's `/api/copilot/turns/`. The effect was not a
+visible error: `auto` read the 404 as "streaming is not deployed", degraded to the agentic poll
+contract on every first send, and the streaming path this package exists for never engaged.
+
+### Fixed
+
+- **`DEFAULT_SSE_ENDPOINTS.createTurn`** is `/api/copilot-turn/`, the route the DRF router
+  registers. All seven defaults are re-verified against `service/urls.py`, `service/views.py` and
+  `service/copilot/sse.py`, and a test pins every one of them including the trailing slashes.
+- **`DEFAULT_SSE_ENDPOINTS.pollTurn`** is `/api/copilot-turn/{turnId}/`. There is no
+  `.../events/` sibling on ml-engine and never was; the fallback now polls the run's own detail
+  and diffs snapshots the way the agentic transport does. An event-page payload is still accepted,
+  so a host that points `pollTurn` at one of its own keeps working.
+- **`AutoTransport` reads threads through streaming** before a transport is chosen. A thread id is
+  a conversation id — it is what a briefing deep link carries — and only the streaming contract can
+  resolve one, so sending it to the agentic detail route fetched the wrong row.
+- **The engine resumes on the `stream_url` the create returned** instead of re-deriving it from
+  the template when the browser comes back online.
+
+### Added
+
+- **`Idempotency-Key` on every create.** `CopilotEngine.send` mints one key per user send and
+  `SendTurnInput.idempotencyKey` carries it, so a retry of that send replays server-side rather
+  than spending a second time. A new send always gets a new key. `AgenticTransport` uses the same
+  key instead of deriving its own from the prompt and a timestamp.
+- **`newIdempotencyKey`**, and `diffRunSnapshot` / `RunCursor` / `RunSnapshot` / `isTerminalStatus`
+  from the new shared `run-diff` module, exported for hosts that write their own transport.
+
+### Removed
+
+- **`scope` is no longer sent on the SSE create body.** `CopilotAskSerializer` declares no scope
+  field, so DRF dropped it — while it still changed the idempotency fingerprint. `SendTurnInput.scope`
+  stays: the agentic transport reads `organization_id` and `user_id` out of it, and page context
+  reaches the model through `transformPrompt` as it already did.
+
 ## [0.2.0] — 2026-08-21
 
 The first release written against a shipped backend rather than a blueprint, and against a real

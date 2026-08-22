@@ -111,7 +111,8 @@ class CopilotEngine {
             ...(wire === trimmed ? {} : { wirePrompt: wire }),
         };
         this.update({ turns: [...this.snapshot.turns, turn], sending: true });
-        const input = { prompt: wire };
+        // Minted once per user send, so any retry of this send replays server-side instead of spending again.
+        const input = { prompt: wire, idempotencyKey: (0, types_1.newIdempotencyKey)() };
         if (this.snapshot.threadId !== undefined)
             input.threadId = this.snapshot.threadId;
         if (scope !== undefined)
@@ -133,6 +134,8 @@ class CopilotEngine {
             threadId: created.threadId ?? this.snapshot.threadId ?? created.turnId,
         });
         this.patchActiveRun({ turnId: created.turnId });
+        this.activeStreamUrl = created.streamUrl;
+        this.activePollUrl = created.pollUrl;
         void this.consume(created.turnId, undefined, created.streamUrl, created.pollUrl);
     }
     cancel() {
@@ -156,6 +159,7 @@ class CopilotEngine {
     }
     startNewThread() {
         this.abortActiveRun();
+        this.forgetRunUrls();
         // Bumped so a transcript fetch still in flight cannot land on the empty new thread.
         this.threadSeq += 1;
         this.update({ turns: [], sending: false, threadLoading: false });
@@ -173,6 +177,7 @@ class CopilotEngine {
     // click restores the plan, the charts and the result tables rather than an empty panel.
     async loadThread(threadId) {
         this.abortActiveRun();
+        this.forgetRunUrls();
         this.threadSeq += 1;
         const token = this.threadSeq;
         const fetchThread = this.options.transport.fetchThread;
@@ -283,12 +288,16 @@ class CopilotEngine {
         }
         if (run.status === 'paused' && run.turnId !== undefined) {
             this.patchActiveRun({ status: 'streaming', offline: false });
-            void this.consume(run.turnId, run.lastEventId);
+            void this.consume(run.turnId, run.lastEventId, this.activeStreamUrl, this.activePollUrl);
         }
     }
     abortActiveRun() {
         this.controller?.abort();
         this.controller = undefined;
+    }
+    forgetRunUrls() {
+        this.activeStreamUrl = undefined;
+        this.activePollUrl = undefined;
     }
     delay(ms) {
         return new Promise((resolve) => {

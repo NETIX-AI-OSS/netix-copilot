@@ -1,6 +1,8 @@
 import type { CopilotThread, SendTurnInput } from '../types';
 import type { HttpConfig } from './http';
 import type { ConsumeRunOptions, CopilotTranscriptTurn, CopilotTransport, CreatedTurn, TransportName } from './types';
+export type { RunCursor, RunSnapshot } from './run-diff';
+export { decodeCursor, encodeCursor } from './run-diff';
 export { AGENTIC_STATUS } from './transcript';
 export interface AgenticEndpoints {
     collection: string;
@@ -20,17 +22,6 @@ export interface AgenticTransportConfig extends HttpConfig {
     maxPollIntervalMs?: number;
     sleepImpl?: (ms: number, signal?: AbortSignal) => Promise<void>;
 }
-interface AgenticCursor {
-    textLength: number;
-    logCount: number;
-    planEmitted: boolean;
-    chartEmitted: boolean;
-    usageSignature: string;
-    runStarted: boolean;
-    queuedEmitted: boolean;
-}
-export declare function encodeCursor(cursor: AgenticCursor): string;
-export declare function decodeCursor(raw: string | undefined): AgenticCursor;
 export declare class AgenticTransport implements CopilotTransport {
     readonly name: TransportName;
     private readonly config;
@@ -43,5 +34,4 @@ export declare class AgenticTransport implements CopilotTransport {
     fetchThread(threadId: string, signal?: AbortSignal): Promise<CopilotTranscriptTurn[]>;
     listThreads(signal?: AbortSignal): Promise<CopilotThread[]>;
     consumeRun(options: ConsumeRunOptions): Promise<void>;
-    private diff;
 }

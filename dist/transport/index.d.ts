@@ -14,12 +14,14 @@ export interface CopilotTransportConfig extends HttpConfig {
 }
 export declare function createTransport(config: CopilotTransportConfig): CopilotTransport;
 export type { AgenticEndpoints, AgenticIdentity } from './agentic-transport';
-export { AGENTIC_STATUS, AgenticTransport, decodeCursor, DEFAULT_AGENTIC_ENDPOINTS, encodeCursor, } from './agentic-transport';
+export { AGENTIC_STATUS, AgenticTransport, DEFAULT_AGENTIC_ENDPOINTS } from './agentic-transport';
 export { AutoTransport } from './auto-transport';
 export { decodeFrame, decodePolledEvent } from './decode';
 export type { AuthTokenProvider, CopilotFetch, HttpConfig } from './http';
 export { CopilotHttpError } from './http';
 export { formatResultCell, normalizeResultData } from './result-data';
+export type { RunCursor, RunSnapshot } from './run-diff';
+export { decodeCursor, diffRunSnapshot, encodeCursor, isTerminalStatus } from './run-diff';
 export type { SseFrame } from './sse';
 export { readSseStream, SseParser } from './sse';
 export type { SseEndpoints, SseTransportConfig } from './sse-transport';
@@ -27,4 +29,4 @@ export { DEFAULT_SSE_ENDPOINTS, SseTransport } from './sse-transport';
 export type { CopilotRunRow } from './transcript';
 export { transcriptFromRequest, turnFromRow } from './transcript';
 export type { ConsumeRunOptions, CopilotTranscriptTurn, CopilotTransport, CreatedTurn, TransportMode, TransportName, } from './types';
-export { isTerminalEvent, NotStreamableError, StreamInterruptedError } from './types';
+export { isTerminalEvent, newIdempotencyKey, NotStreamableError, StreamInterruptedError, } from './types';

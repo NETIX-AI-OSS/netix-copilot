@@ -134,4 +134,5 @@ export interface SendTurnInput {
     prompt: string;
     threadId?: string;
     scope?: JsonObject;
+    idempotencyKey?: string;
 }

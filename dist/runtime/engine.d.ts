@@ -54,6 +54,8 @@ export declare class CopilotEngine {
     private disposed;
     private localTurnSeq;
     private threadSeq;
+    private activeStreamUrl;
+    private activePollUrl;
     constructor(options: CopilotEngineOptions);
     subscribe: (listener: () => void) => (() => void);
     getSnapshot: () => CopilotEngineState;
@@ -72,6 +74,7 @@ export declare class CopilotEngine {
     private consume;
     private handleConnectivity;
     private abortActiveRun;
+    private forgetRunUrls;
     private delay;
     private pushEnveloped;
     private pushEvent;

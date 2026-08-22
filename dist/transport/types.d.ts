@@ -40,4 +40,5 @@ export declare class StreamInterruptedError extends Error {
     constructor(lastEventId: string | undefined);
 }
 export declare function fillTemplate(template: string, params: Record<string, string>): string;
+export declare function newIdempotencyKey(): string;
 export declare function sleep(ms: number, signal?: AbortSignal): Promise<void>;

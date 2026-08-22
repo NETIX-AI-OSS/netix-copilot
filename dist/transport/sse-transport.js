@@ -1,27 +1,20 @@
 "use strict";
-// The streaming transport.
-//
-// Re-checked against ml-engine's feat/copilot-w2-memory-and-actions branch on 2026-08-21. The
-// stream, cancel, approval and thread routes all exist and the defaults below are now the paths
-// ml-engine actually registers. The one route that does not exist is the create: there is no
-// POST /api/copilot/turns/, because a turn is opened through the agentic request resource and
-// its response carries the turn_id to tail. `auto` therefore still degrades to the poll
-// transport on the first send, which is why that default is left pointing at the blueprint path
-// rather than at a route that would half-work.
+// The streaming transport, re-verified against ml-engine on 2026-08-22.
+// Every route below is one ml-engine registers: the DRF router mounts `copilot-turn` and `copilot-conversation`,
+// and the SSE tail is served by the ASGI path router in service/mcp_server/asgi.py, ahead of Django and with no trailing slash.
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SseTransport = exports.DEFAULT_SSE_ENDPOINTS = void 0;
 const decode_1 = require("./decode");
 const http_1 = require("./http");
+const run_diff_1 = require("./run-diff");
 const sse_1 = require("./sse");
 const transcript_1 = require("./transcript");
 const types_1 = require("./types");
-// The paths ml-engine registers, verified against service/urls.py and service/copilot/sse.py.
-// Note the two spellings: the DRF router registers `copilot-turn`, while the SSE endpoint is
-// served ahead of Django by the ASGI path router at `copilot/turn` with no trailing slash.
+// Note the two spellings: the DRF router registers `copilot-turn`, the ASGI SSE route is `copilot/turn`.
 exports.DEFAULT_SSE_ENDPOINTS = {
-    createTurn: '/api/copilot/turns/',
+    createTurn: '/api/copilot-turn/',
     streamTurn: '/api/copilot/turn/{turnId}/events',
-    pollTurn: '/api/copilot-turn/{turnId}/events/',
+    pollTurn: '/api/copilot-turn/{turnId}/',
     cancelTurn: '/api/copilot-turn/{turnId}/cancel/',
     approval: '/api/copilot-turn/{turnId}/steps/{stepId}/approval/',
     threads: '/api/copilot-conversation/',
@@ -47,15 +40,17 @@ class SseTransport {
         this.endpoints = { ...exports.DEFAULT_SSE_ENDPOINTS, ...config.endpoints };
         this.sleepImpl = config.sleepImpl ?? types_1.sleep;
     }
+    // CopilotAskSerializer takes prompt/thread_id and declares no scope field, so page context
+    // reaches the model through the prompt itself rather than through a key DRF would drop.
     async createTurn(input, signal) {
         const body = { prompt: input.prompt };
         if (input.threadId !== undefined)
             body.thread_id = input.threadId;
-        if (input.scope !== undefined)
-            body.scope = input.scope;
         const payload = await (0, http_1.requestJson)(this.config, this.endpoints.createTurn, {
             method: 'POST',
             body,
+            // ml-engine claims this key before it spends anything, so a repeated create replays the run.
+            headers: { 'Idempotency-Key': input.idempotencyKey ?? (0, types_1.newIdempotencyKey)() },
             ...(signal ? { signal } : {}),
         });
         if (!isRecord(payload))
@@ -143,7 +138,7 @@ class SseTransport {
         catch (error) {
             if (options.signal.aborted)
                 return;
-            // A missing or non-SSE stream route still has a cursor-poll sibling in this contract.
+            // No stream to tail: the run itself is still readable, so fall back to polling the turn.
             if (error instanceof http_1.CopilotHttpError && error.isRouteMissing) {
                 await this.consumeByCursorPolling(options);
                 return;
@@ -193,32 +188,51 @@ class SseTransport {
             throw new types_1.StreamInterruptedError(parser.getLastEventId());
         }
     }
+    // ml-engine registers no cursor-poll route: `pollTurn` is the run's own detail, and a poll of it
+    // is diffed exactly the way the agentic transport diffs its resource. An event page is still
+    // accepted, so a host that points `pollTurn` at one of its own keeps working.
     async consumeByCursorPolling(options) {
         const base = options.pollUrl ?? (0, types_1.fillTemplate)(this.endpoints.pollTurn, { turnId: options.turnId });
         const interval = this.config.pollIntervalMs ?? 1000;
         let cursor = options.lastEventId;
+        const snapshotCursor = (0, run_diff_1.decodeCursor)(options.lastEventId);
+        let snapshotMode = false;
         let idleRounds = 0;
         while (!options.signal.aborted) {
-            const query = cursor === undefined ? '' : `?after=${encodeURIComponent(cursor)}`;
-            const payload = await (0, http_1.requestJson)(this.config, `${base}${query}`, {
-                signal: options.signal,
-            });
-            const rows = payload.events ?? payload.results ?? [];
+            // A run detail takes no cursor query; only an event page is asked to resume from one.
+            const query = cursor === undefined || snapshotMode ? '' : `?after=${encodeURIComponent(cursor)}`;
+            const payload = await (0, http_1.requestJson)(this.config, `${base}${query}`, { signal: options.signal });
+            const page = payload.events ?? payload.results;
+            let emitted = 0;
             let terminal = false;
-            for (const row of rows) {
-                const decoded = (0, decode_1.decodePolledEvent)(row);
-                if (!decoded)
-                    continue;
-                if (decoded.id !== undefined)
-                    cursor = decoded.id;
-                if ((0, types_1.isTerminalEvent)(decoded))
-                    terminal = true;
-                options.onEvent(decoded);
+            if (page === undefined) {
+                snapshotMode = true;
+                for (const enveloped of (0, run_diff_1.diffRunSnapshot)(payload, snapshotCursor, options.turnId)) {
+                    emitted += 1;
+                    if (enveloped.id !== undefined)
+                        cursor = enveloped.id;
+                    options.onEvent(enveloped);
+                }
+                if ((0, run_diff_1.isTerminalStatus)(payload.status))
+                    return;
             }
-            cursor = payload.next_cursor ?? payload.nextCursor ?? payload.cursor ?? cursor;
-            if (terminal || payload.done === true)
-                return;
-            idleRounds = rows.length === 0 ? Math.min(idleRounds + 1, 3) : 0;
+            else {
+                for (const row of page) {
+                    const decoded = (0, decode_1.decodePolledEvent)(row);
+                    if (!decoded)
+                        continue;
+                    emitted += 1;
+                    if (decoded.id !== undefined)
+                        cursor = decoded.id;
+                    if ((0, types_1.isTerminalEvent)(decoded))
+                        terminal = true;
+                    options.onEvent(decoded);
+                }
+                cursor = payload.next_cursor ?? payload.nextCursor ?? payload.cursor ?? cursor;
+                if (terminal || payload.done === true)
+                    return;
+            }
+            idleRounds = emitted === 0 ? Math.min(idleRounds + 1, 3) : 0;
             await this.sleepImpl(interval * 2 ** idleRounds, options.signal);
         }
     }
