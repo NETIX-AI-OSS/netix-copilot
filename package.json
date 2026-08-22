@@ -1,6 +1,6 @@
 {
   "name": "netix-copilot",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Shared React SDK for the NETIX copilot dock: streaming transport, host adapters and chat surface components",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

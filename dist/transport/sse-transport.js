@@ -90,9 +90,7 @@ class SseTransport {
         const path = (0, types_1.fillTemplate)(this.endpoints.threadTurns, {
             threadId: encodeURIComponent(threadId),
         });
-        const payload = await (0, http_1.requestJson)(this.config, path, {
-            ...(signal ? { signal } : {}),
-        });
+        const payload = await this.readOrEmpty(path, signal);
         const rows = Array.isArray(payload)
             ? payload
             : isRecord(payload) && Array.isArray(payload.results)
@@ -101,9 +99,7 @@ class SseTransport {
         return rows.filter(isRecord).map((row, index) => (0, transcript_1.turnFromRow)(row, threadId, index));
     }
     async listThreads(signal) {
-        const payload = await (0, http_1.requestJson)(this.config, this.endpoints.threads, {
-            ...(signal ? { signal } : {}),
-        });
+        const payload = await this.readOrEmpty(this.endpoints.threads, signal);
         const rows = Array.isArray(payload)
             ? payload
             : isRecord(payload) && Array.isArray(payload.results)
@@ -130,6 +126,18 @@ class SseTransport {
             return thread;
         });
     }
+    // A thread read that 404s means this cluster serves no thread store, which is an empty
+    // history rather than a failure. The dock is mounted on every route, so it must not throw.
+    async readOrEmpty(path, signal) {
+        try {
+            return await (0, http_1.requestJson)(this.config, path, { ...(signal ? { signal } : {}) });
+        }
+        catch (error) {
+            if ((0, http_1.isRouteMissing)(error))
+                return undefined;
+            throw error;
+        }
+    }
     async consumeRun(options) {
         options.onTransportChange?.('sse');
         try {
@@ -139,7 +147,7 @@ class SseTransport {
             if (options.signal.aborted)
                 return;
             // No stream to tail: the run itself is still readable, so fall back to polling the turn.
-            if (error instanceof http_1.CopilotHttpError && error.isRouteMissing) {
+            if ((0, http_1.isRouteMissing)(error)) {
                 await this.consumeByCursorPolling(options);
                 return;
             }

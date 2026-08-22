@@ -3,6 +3,7 @@
 // cafm-v2-ui (react-query) without depending on either.
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CopilotHttpError = void 0;
+exports.isRouteMissing = isRouteMissing;
 exports.joinUrl = joinUrl;
 exports.buildHeaders = buildHeaders;
 exports.request = request;
@@ -20,6 +21,10 @@ class CopilotHttpError extends Error {
     }
 }
 exports.CopilotHttpError = CopilotHttpError;
+// A 404/405/501 says the route is not deployed on this cluster, not that the request was bad.
+function isRouteMissing(error) {
+    return error instanceof CopilotHttpError && error.isRouteMissing;
+}
 function joinUrl(baseUrl, path) {
     if (/^https?:\/\//i.test(path))
         return path;

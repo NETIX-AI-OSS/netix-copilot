@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.StreamInterruptedError = exports.NotStreamableError = exports.newIdempotencyKey = exports.isTerminalEvent = exports.turnFromRow = exports.transcriptFromRequest = exports.SseTransport = exports.DEFAULT_SSE_ENDPOINTS = exports.SseParser = exports.readSseStream = exports.isTerminalStatus = exports.encodeCursor = exports.diffRunSnapshot = exports.decodeCursor = exports.normalizeResultData = exports.formatResultCell = exports.CopilotHttpError = exports.decodePolledEvent = exports.decodeFrame = exports.AutoTransport = exports.DEFAULT_AGENTIC_ENDPOINTS = exports.AgenticTransport = exports.AGENTIC_STATUS = void 0;
+exports.StreamInterruptedError = exports.NotStreamableError = exports.newIdempotencyKey = exports.isTerminalEvent = exports.turnFromRow = exports.transcriptFromRequest = exports.SseTransport = exports.DEFAULT_SSE_ENDPOINTS = exports.SseParser = exports.readSseStream = exports.isTerminalStatus = exports.encodeCursor = exports.diffRunSnapshot = exports.decodeCursor = exports.normalizeResultData = exports.formatResultCell = exports.isRouteMissing = exports.CopilotHttpError = exports.decodePolledEvent = exports.decodeFrame = exports.AutoTransport = exports.DEFAULT_AGENTIC_ENDPOINTS = exports.AgenticTransport = exports.AGENTIC_STATUS = void 0;
 exports.createTransport = createTransport;
 const agentic_transport_1 = require("./agentic-transport");
 const auto_transport_1 = require("./auto-transport");
@@ -49,6 +49,7 @@ Object.defineProperty(exports, "decodeFrame", { enumerable: true, get: function 
 Object.defineProperty(exports, "decodePolledEvent", { enumerable: true, get: function () { return decode_1.decodePolledEvent; } });
 var http_1 = require("./http");
 Object.defineProperty(exports, "CopilotHttpError", { enumerable: true, get: function () { return http_1.CopilotHttpError; } });
+Object.defineProperty(exports, "isRouteMissing", { enumerable: true, get: function () { return http_1.isRouteMissing; } });
 var result_data_1 = require("./result-data");
 Object.defineProperty(exports, "formatResultCell", { enumerable: true, get: function () { return result_data_1.formatResultCell; } });
 Object.defineProperty(exports, "normalizeResultData", { enumerable: true, get: function () { return result_data_1.normalizeResultData; } });

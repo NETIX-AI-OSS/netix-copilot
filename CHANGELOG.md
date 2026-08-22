@@ -5,6 +5,39 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.2.2] — 2026-08-22
+
+A follow-up to v0.2.1, and reachable because of it. Moving the thread reads onto the streaming
+transport was right — a thread id is a Conversation id and only that contract resolves one — but
+those two reads were the only transport methods with no `isRouteMissing` degrade, so on a cluster
+whose ml-engine has not shipped the copilot routes they rejected instead of answering empty. Both
+host apps mount the dock on every authenticated route, so that is a per-page-load failure on an
+always-on surface, which is the class of problem this package was written to remove.
+
+### Fixed
+
+- **A missing thread route answers empty instead of throwing.** `listThreads` and `fetchThread`
+  now degrade on 404/405/501 in all three transports — `AutoTransport`, `SseTransport` and
+  `AgenticTransport` — so a `transport: 'sse'` or `transport: 'agentic'` pin is covered as well as
+  the `auto` default. A service with no thread store genuinely has no threads. Anything that is
+  not a missing route still raises, so a real failure cannot pose as "no history".
+- The thread reads deliberately do **not** fall back to the polling transport. A Conversation id is
+  unreadable on the agentic resource, and degrading there is what caused the permanent-degrade bug
+  fixed in v0.2.1. Returning empty is the correct answer; falling back is not.
+
+### Added
+
+- **`isRouteMissing`** is exported from the transport surface, so a host writing its own transport
+  can apply the same rule rather than re-deriving it from `CopilotHttpError.status`.
+
+### Notes
+
+The other transport methods were audited for the same hole and left as they are. `createTurn` and
+`consumeRun` must raise so `AutoTransport` can choose a transport; `cancelTurn` already swallows
+everything, because the run ends server-side regardless; `respondToApproval` stays loud on purpose,
+since quietly reporting success for a decision nothing recorded would tell a user a destructive
+action was authorised.
+
 ## [0.2.1] — 2026-08-22
 
 A wire-contract repair. ml-engine's copilot admin API added `POST /api/copilot-turn/`, and this

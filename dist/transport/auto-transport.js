@@ -26,7 +26,7 @@ class AutoTransport {
             return created;
         }
         catch (error) {
-            if (!isRouteMissing(error))
+            if (!(0, http_1.isRouteMissing)(error))
                 throw error;
             this.resolved = this.polling;
             return this.polling.createTurn(input, signal);
@@ -40,7 +40,7 @@ class AutoTransport {
             this.resolved = this.streaming;
         }
         catch (error) {
-            if (!isRouteMissing(error))
+            if (!(0, http_1.isRouteMissing)(error))
                 throw error;
             this.resolved = this.polling;
             await this.polling.consumeRun(options);
@@ -54,15 +54,31 @@ class AutoTransport {
     }
     // Threads are conversations, and a conversation id is what a briefing deep link carries, so the
     // list and the transcript both read through streaming until a failed create says otherwise.
-    listThreads(signal) {
-        return (this.resolved ?? this.streaming).listThreads(signal);
+    // A missing route answers empty rather than throwing: this dock is mounted on every
+    // authenticated route, and a cluster whose ml-engine has no thread store genuinely has no
+    // threads. It must not degrade to polling, which cannot resolve a conversation id at all.
+    async listThreads(signal) {
+        try {
+            return await (this.resolved ?? this.streaming).listThreads(signal);
+        }
+        catch (error) {
+            if ((0, http_1.isRouteMissing)(error))
+                return [];
+            throw error;
+        }
     }
     async fetchThread(threadId, signal) {
         const target = this.resolved ?? this.streaming;
-        return target.fetchThread ? target.fetchThread(threadId, signal) : [];
+        if (!target.fetchThread)
+            return [];
+        try {
+            return await target.fetchThread(threadId, signal);
+        }
+        catch (error) {
+            if ((0, http_1.isRouteMissing)(error))
+                return [];
+            throw error;
+        }
     }
 }
 exports.AutoTransport = AutoTransport;
-function isRouteMissing(error) {
-    return error instanceof http_1.CopilotHttpError && error.isRouteMissing;
-}

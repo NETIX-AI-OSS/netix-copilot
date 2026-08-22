@@ -18,7 +18,7 @@ export { AGENTIC_STATUS, AgenticTransport, DEFAULT_AGENTIC_ENDPOINTS } from './a
 export { AutoTransport } from './auto-transport';
 export { decodeFrame, decodePolledEvent } from './decode';
 export type { AuthTokenProvider, CopilotFetch, HttpConfig } from './http';
-export { CopilotHttpError } from './http';
+export { CopilotHttpError, isRouteMissing } from './http';
 export { formatResultCell, normalizeResultData } from './result-data';
 export type { RunCursor, RunSnapshot } from './run-diff';
 export { decodeCursor, diffRunSnapshot, encodeCursor, isTerminalStatus } from './run-diff';

@@ -27,6 +27,7 @@ export declare class SseTransport implements CopilotTransport {
     respondToApproval(turnId: string, stepId: string, approved: boolean): Promise<void>;
     fetchThread(threadId: string, signal?: AbortSignal): Promise<CopilotTranscriptTurn[]>;
     listThreads(signal?: AbortSignal): Promise<CopilotThread[]>;
+    private readOrEmpty;
     consumeRun(options: ConsumeRunOptions): Promise<void>;
     private consumeByStreaming;
     private consumeByCursorPolling;

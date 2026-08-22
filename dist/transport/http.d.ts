@@ -4,6 +4,7 @@ export declare class CopilotHttpError extends Error {
     constructor(status: number, body: string, message?: string);
     get isRouteMissing(): boolean;
 }
+export declare function isRouteMissing(error: unknown): boolean;
 export type CopilotFetch = (input: string, init?: RequestInit) => Promise<Response>;
 export type AuthTokenProvider = () => string | null | undefined | Promise<string | null | undefined>;
 export interface HttpConfig {

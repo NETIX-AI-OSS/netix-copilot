@@ -32,6 +32,7 @@ export declare class AgenticTransport implements CopilotTransport {
     cancelTurn(): Promise<void>;
     respondToApproval(turnId: string, stepId: string, approved: boolean): Promise<void>;
     fetchThread(threadId: string, signal?: AbortSignal): Promise<CopilotTranscriptTurn[]>;
+    private readOrEmpty;
     listThreads(signal?: AbortSignal): Promise<CopilotThread[]>;
     consumeRun(options: ConsumeRunOptions): Promise<void>;
 }
