@@ -28,7 +28,10 @@ export declare class SseTransport implements CopilotTransport {
     fetchThread(threadId: string, signal?: AbortSignal): Promise<CopilotTranscriptTurn[]>;
     listThreads(signal?: AbortSignal): Promise<CopilotThread[]>;
     private readOrEmpty;
+    isDeployed(signal?: AbortSignal): Promise<boolean>;
     consumeRun(options: ConsumeRunOptions): Promise<void>;
     private consumeByStreaming;
+    private completeTerminal;
+    private readRunRow;
     private consumeByCursorPolling;
 }

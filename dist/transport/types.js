@@ -2,7 +2,8 @@
 // The transport contract, over two wire protocols that both speak the copilot event vocabulary in ../types.
 // 'sse' is POST /api/copilot-turn/ then GET /api/copilot/turn/{id}/events, the streaming copilot contract.
 // 'agentic' is POST /api/agentic-ml-request/ then polling its detail route, the contract the older chat surfaces call.
-// 'auto' probes the streaming create once and remembers the answer.
+// 'auto' tries the streaming create once and remembers the answer, corroborating a missing-route
+// reply against the contract itself before it settles on the poll contract.
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.StreamInterruptedError = exports.NotStreamableError = void 0;
 exports.isTerminalEvent = isTerminalEvent;

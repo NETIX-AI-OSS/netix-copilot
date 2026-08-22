@@ -1,7 +1,9 @@
 "use strict";
 // Picks a transport once and remembers the answer.
 // The streaming create is the live contract, so it is what everything defaults to before the first send.
-// A create that 404s means a deployment without those routes; that tab then stays on the agentic poll contract.
+// A create that reports a missing route means a deployment without those routes; that tab then stays
+// on the agentic poll contract. Because that decision lasts the life of the tab, it is never taken on
+// the strength of one request: the streaming contract is asked directly before streaming is given up.
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AutoTransport = void 0;
 const http_1 = require("./http");
@@ -26,7 +28,7 @@ class AutoTransport {
             return created;
         }
         catch (error) {
-            if (!(0, http_1.isRouteMissing)(error))
+            if (!(await this.streamingIsAbsent(error, signal)))
                 throw error;
             this.resolved = this.polling;
             return this.polling.createTurn(input, signal);
@@ -40,7 +42,7 @@ class AutoTransport {
             this.resolved = this.streaming;
         }
         catch (error) {
-            if (!(0, http_1.isRouteMissing)(error))
+            if (!(await this.streamingIsAbsent(error, options.signal)))
                 throw error;
             this.resolved = this.polling;
             await this.polling.consumeRun(options);
@@ -78,6 +80,23 @@ class AutoTransport {
             if ((0, http_1.isRouteMissing)(error))
                 return [];
             throw error;
+        }
+    }
+    // One request's failure is never proof that a contract is absent. ml-engine 404s a create that
+    // names a thread the caller does not own, and reading that as "streaming is not deployed" pinned
+    // the tab to polling for good over a stale bookmark. So a missing-route answer is corroborated
+    // against the streaming contract itself, and only a transport that cannot be asked is believed.
+    async streamingIsAbsent(error, signal) {
+        if (!(0, http_1.isRouteMissing)(error))
+            return false;
+        const probe = this.streaming.isDeployed;
+        if (probe === undefined)
+            return true;
+        try {
+            return !(await probe.call(this.streaming, signal));
+        }
+        catch {
+            return true;
         }
     }
 }

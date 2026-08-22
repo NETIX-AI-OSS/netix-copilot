@@ -138,6 +138,18 @@ class SseTransport {
             throw error;
         }
     }
+    // Whether this cluster serves the copilot contract, asked of a route that takes no arguments and
+    // so cannot answer about a resource. A missing route here is the one reply that proves absence;
+    // a list, a 401 or a 500 all mean something on the other end is serving these paths.
+    async isDeployed(signal) {
+        try {
+            await (0, http_1.request)(this.config, this.endpoints.threads, { ...(signal ? { signal } : {}) });
+            return true;
+        }
+        catch (error) {
+            return !(0, http_1.isRouteMissing)(error);
+        }
+    }
     async consumeRun(options) {
         options.onTransportChange?.('sse');
         try {
@@ -183,17 +195,54 @@ class SseTransport {
             throw new types_1.NotStreamableError('Stream endpoint returned no readable body.');
         const parser = new sse_1.SseParser();
         parser.setLastEventId(options.lastEventId);
-        let terminal = false;
+        let terminal;
         await (0, sse_1.readSseStream)(response.body, (frame) => {
             const decoded = (0, decode_1.decodeFrame)(frame);
             if (!decoded)
                 return;
-            if ((0, types_1.isTerminalEvent)(decoded))
-                terminal = true;
+            // The terminal frame is held back, because what it is missing is what the dock shows once
+            // the run stops. Everything before it goes out the moment it arrives, as it always did.
+            if ((0, types_1.isTerminalEvent)(decoded)) {
+                terminal = decoded;
+                return;
+            }
             options.onEvent(decoded);
         }, { parser, signal: options.signal });
-        if (!terminal && !options.signal.aborted) {
+        if (terminal === undefined) {
+            if (options.signal.aborted)
+                return;
             throw new types_1.StreamInterruptedError(parser.getLastEventId());
+        }
+        options.onEvent(options.signal.aborted ? terminal : await this.completeTerminal(terminal, options));
+    }
+    // ml-engine's `done` frame carries status, turn_id, execution_time, chart_available and
+    // response_chars, and its `error` frame carries a code and a detail. Neither carries `tools` or
+    // the tool output behind the result table: service/copilot/events.py replaces any event over
+    // COPILOT_EVENT_MAX_BYTES with a truncation marker, so a fattened frame would lose the whole run
+    // summary rather than part of it. The stored turn keeps both, so it is read once, here, and
+    // merged into the terminal event. Nothing above the transport sees a partly-finished run, and
+    // the badges and the table appear with the answer instead of only after a thread is re-read.
+    async completeTerminal(terminal, options) {
+        const event = terminal.event;
+        if (event.type !== 'done' && event.type !== 'error')
+            return terminal;
+        if (event.tools !== undefined && event.resultData !== undefined)
+            return terminal;
+        const row = await this.readRunRow(options.turnId, options.signal);
+        if (row === undefined)
+            return terminal;
+        // The wire wins wherever the two agree to disagree; the row only fills what never arrived.
+        return { ...terminal, event: { ...(0, transcript_1.readRunSummary)(row), ...event } };
+    }
+    // An enrichment, never a dependency: a run that finished must not fail because this read did.
+    async readRunRow(turnId, signal) {
+        const path = (0, types_1.fillTemplate)(this.endpoints.pollTurn, { turnId });
+        try {
+            const payload = await (0, http_1.requestJson)(this.config, path, { signal });
+            return isRecord(payload) ? payload : undefined;
+        }
+        catch {
+            return undefined;
         }
     }
     // ml-engine registers no cursor-poll route: `pollTurn` is the run's own detail, and a poll of it

@@ -26,7 +26,7 @@ export type { CopilotEngineOptions, CopilotEngineState, CopilotLogger, CopilotSe
 export { browserOnlineSource, CopilotEngine } from './runtime/engine';
 export { applyEnveloped, applyEvent, initialRunState, isRunActive, isRunFinished, } from './runtime/run-store';
 export type { AgenticEndpoints, AgenticIdentity, AuthTokenProvider, ConsumeRunOptions, CopilotFetch, CopilotRunRow, CopilotTranscriptTurn, CopilotTransport, CopilotTransportConfig, CreatedTurn, HttpConfig, RunCursor, RunSnapshot, SseEndpoints, SseFrame, SseTransportConfig, TransportMode, TransportName, } from './transport';
-export { AGENTIC_STATUS, AgenticTransport, AutoTransport, CopilotHttpError, createTransport, decodeCursor, decodeFrame, decodePolledEvent, DEFAULT_AGENTIC_ENDPOINTS, DEFAULT_SSE_ENDPOINTS, diffRunSnapshot, encodeCursor, formatResultCell, isRouteMissing, isTerminalEvent, isTerminalStatus, newIdempotencyKey, normalizeResultData, NotStreamableError, readSseStream, SseParser, SseTransport, StreamInterruptedError, transcriptFromRequest, turnFromRow, } from './transport';
+export { AGENTIC_STATUS, AgenticTransport, AutoTransport, CopilotHttpError, createTransport, decodeCursor, decodeFrame, decodePolledEvent, DEFAULT_AGENTIC_ENDPOINTS, DEFAULT_SSE_ENDPOINTS, diffRunSnapshot, encodeCursor, formatResultCell, isResourceError, isRouteMissing, isTerminalEvent, isTerminalStatus, newIdempotencyKey, normalizeResultData, NotStreamableError, readSseStream, SseParser, SseTransport, StreamInterruptedError, transcriptFromRequest, turnFromRow, } from './transport';
 export type * from './types';
 export { COPILOT_EVENT_NAMES } from './types';
 export type { TranslateVars } from './ui/i18n';

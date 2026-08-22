@@ -5,6 +5,67 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.2.3] — 2026-08-22
+
+Both defects here were found while adopting streaming in cafm-v2-ui, and both undo the same thing:
+they make a run less visible than the drawer it replaces. One decides the streaming contract is not
+deployed because a single request 404'd, and never revisits it. The other loses the tools badge and
+the result table on every live run, and gets them back only when the thread is read again.
+
+### Fixed
+
+- **A real 404 is no longer read as a missing route.** `isRouteMissing` was a bare status test, so
+  it could not tell "this cluster does not serve this route" from "this resource does not exist".
+  ml-engine's `ConversationTurnViewSet._thread` raises `NotFound("No such thread.")` when a create
+  names a thread that is missing or belongs to someone else — a genuine 404, with a JSON body — and
+  `AutoTransport` read that as proof the streaming routes were undeployed and pinned the tab to the
+  agentic contract for the rest of its life. One stale bookmarked `?thread=` cost that tab streaming
+  permanently, invisibly, and sent the reply to `POST /api/agentic-ml-request/<that id>/reply/`.
+  A 404 whose body is a DRF error object — a JSON object carrying a non-empty string `detail` — is
+  now a resource error and is raised, with that detail as the error message so the user reads
+  "No such thread." rather than a status line. 405 and 501 stay fallback-worthy whatever the body:
+  they answer about the contract, not about the resource.
+- **A durable degrade is corroborated before it is taken.** Even a bodiless 404 is one request's
+  answer, and `AutoTransport`'s decision outlives the request by the life of the tab. Before giving
+  up streaming it now asks the streaming contract directly, through the new optional
+  `CopilotTransport.isDeployed()`, which `SseTransport` answers with a read of
+  `GET /api/copilot-conversation/` — a route that takes no arguments and so cannot answer about a
+  resource. Only a missing route there is believed; a list, a 401 or a 500 all mean the contract is
+  served. A transport that does not implement the probe degrades exactly as before. The probe runs
+  on the failure path only, once, and never on the remembered answer.
+- **Streaming keeps the tools badge and the result table.** `RunState.tools` and
+  `RunState.resultData` are populated from the terminal payload, and ml-engine's SSE `done` frame
+  carries `status`, `turn_id`, `execution_time`, `chart_available` and `response_chars` — not
+  `tools`, not `result_data`. The `error` frame is thinner still. So adopting streaming was a
+  visible regression against the agentic transport, which synthesises both by diffing the row
+  snapshot. `SseTransport` now holds the terminal event back for exactly one read of
+  `GET /api/copilot-turn/{turnId}/` and merges the run summary the frame could not carry into it.
+  The frame wins on every key it did send. A failed read still finishes the run. One terminal event
+  is emitted, already complete, so the panel is never cleared and repopulated to show the badges.
+
+### Added
+
+- **`isResourceError`**, alongside `isRouteMissing`, plus `CopilotHttpError.isResourceError` and
+  `CopilotHttpError.detail`, so a host writing its own transport can draw the same line.
+- **`CopilotTransport.isDeployed?()`**, the capability question asked of a contract rather than
+  inferred from a request. Optional, like `fetchThread`, so a transport written against v0.1.0 still
+  satisfies the interface.
+
+### Notes
+
+- **This did not belong in ml-engine.** Adding `tools` to the `done` frame would fit — it is a short
+  list of names — but the tool output behind the result table would not, and `encode_payload` in
+  `service/copilot/events.py` replaces any event over `COPILOT_EVENT_MAX_BYTES` with a truncation
+  marker rather than trimming it, so an oversized frame loses the whole run summary. The SDK would
+  still need the read-back for the table, so the backend change buys nothing the SDK does not
+  already have to do.
+- **The capability-inference pattern was swept for.** `AutoTransport.resolved` is the only durable
+  capability state in the package, set in `createTurn` and `consumeRun`, and both now corroborate.
+  Every other `isRouteMissing` site is per-call and re-tries on the next call: `SseTransport`'s
+  fall back from the stream to the run detail, `readOrEmpty` in both transports, and the thread
+  reads on `AutoTransport`. Those are answers about one request, used for one request, and were
+  left as they are.
+
 ## [0.2.2] — 2026-08-22
 
 A follow-up to v0.2.1, and reachable because of it. Moving the thread reads onto the streaming

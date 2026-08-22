@@ -30,6 +30,7 @@ export interface CopilotTransport {
     respondToApproval(turnId: string, stepId: string, approved: boolean): Promise<void>;
     listThreads(signal?: AbortSignal): Promise<CopilotThread[]>;
     fetchThread?(threadId: string, signal?: AbortSignal): Promise<CopilotTranscriptTurn[]>;
+    isDeployed?(signal?: AbortSignal): Promise<boolean>;
 }
 export declare function isTerminalEvent(enveloped: EnvelopedEvent): boolean;
 export declare class NotStreamableError extends Error {

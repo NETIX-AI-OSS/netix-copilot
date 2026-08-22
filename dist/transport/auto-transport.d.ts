@@ -13,4 +13,5 @@ export declare class AutoTransport implements CopilotTransport {
     respondToApproval(turnId: string, stepId: string, approved: boolean): Promise<void>;
     listThreads(signal?: AbortSignal): Promise<CopilotThread[]>;
     fetchThread(threadId: string, signal?: AbortSignal): Promise<CopilotTranscriptTurn[]>;
+    private streamingIsAbsent;
 }
