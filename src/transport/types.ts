@@ -1,16 +1,7 @@
-// The transport contract.
-//
-// Everything above this line speaks one language: the copilot event vocabulary in ../types.
-// Below it there are two very different wire protocols, and which one is live matters:
-//
-//   'sse'     -- POST /turns/ then GET /turns/{id}/stream, the streaming contract from the
-//                copilot blueprint. Verified 2026-08-21: ml-engine does NOT serve this yet.
-//   'agentic' -- POST /api/agentic-ml-request/ then poll GET /api/agentic-ml-request/{id}/.
-//                This is what ml-engine actually serves today and what every existing chat
-//                surface in the fleet already calls. It synthesizes the same event vocabulary
-//                from successive snapshots, so the UI layer cannot tell the two apart.
-//
-// 'auto' probes the streaming route once and remembers the answer.
+// The transport contract, over two wire protocols that both speak the copilot event vocabulary in ../types.
+// 'sse' is POST /api/copilot-turn/ then GET /api/copilot/turn/{id}/events, the streaming copilot contract.
+// 'agentic' is POST /api/agentic-ml-request/ then polling its detail route, the contract the older chat surfaces call.
+// 'auto' probes the streaming create once and remembers the answer.
 
 import type { CopilotThread, EnvelopedEvent, RunState, SendTurnInput } from '../types'
 
@@ -86,6 +77,13 @@ export class StreamInterruptedError extends Error {
 
 export function fillTemplate(template: string, params: Record<string, string>): string {
   return template.replace(/\{(\w+)\}/g, (match, key: string) => params[key] ?? match)
+}
+
+// One key per user send, so a retry of that send replays on ml-engine instead of spending again.
+export function newIdempotencyKey(): string {
+  const uuid = globalThis.crypto?.randomUUID?.()
+  if (uuid !== undefined) return `nxcp-${uuid}`
+  return `nxcp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
 }
 
 export function sleep(ms: number, signal?: AbortSignal): Promise<void> {

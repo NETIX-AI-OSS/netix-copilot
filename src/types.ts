@@ -213,6 +213,10 @@ export interface RunState {
 export interface SendTurnInput {
   prompt: string
   threadId?: string
-  // Opaque host scope. Serialized as-is into the create-turn request body.
+  // Host page context. Never a wire field: ml-engine's create accepts no scope key, so a host
+  // that needs the model to see its context folds it into the prompt through `transformPrompt`.
+  // The agentic transport reads organization_id and user_id out of it, which is why it is here.
   scope?: JsonObject
+  // Sent as the Idempotency-Key header, so a retried create replays instead of spending again.
+  idempotencyKey?: string
 }

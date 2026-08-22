@@ -13,7 +13,7 @@
 //    Last-Event-ID rather than replaying the answer from the top.
 
 import type { CopilotTransport, TransportName } from '../transport/types'
-import { StreamInterruptedError } from '../transport/types'
+import { newIdempotencyKey, StreamInterruptedError } from '../transport/types'
 import type {
   CopilotEvent,
   CopilotThread,
@@ -113,6 +113,9 @@ export class CopilotEngine {
   private disposed = false
   private localTurnSeq = 0
   private threadSeq = 0
+  // Where the server said to read the active run. Kept so a resume tails the URL it handed back.
+  private activeStreamUrl: string | undefined
+  private activePollUrl: string | undefined
 
   constructor(options: CopilotEngineOptions) {
     this.options = options
@@ -188,7 +191,8 @@ export class CopilotEngine {
     }
     this.update({ turns: [...this.snapshot.turns, turn], sending: true })
 
-    const input: SendTurnInput = { prompt: wire }
+    // Minted once per user send, so any retry of this send replays server-side instead of spending again.
+    const input: SendTurnInput = { prompt: wire, idempotencyKey: newIdempotencyKey() }
     if (this.snapshot.threadId !== undefined) input.threadId = this.snapshot.threadId
     if (scope !== undefined) input.scope = scope
 
@@ -209,6 +213,8 @@ export class CopilotEngine {
       threadId: created.threadId ?? this.snapshot.threadId ?? created.turnId,
     })
     this.patchActiveRun({ turnId: created.turnId })
+    this.activeStreamUrl = created.streamUrl
+    this.activePollUrl = created.pollUrl
     void this.consume(created.turnId, undefined, created.streamUrl, created.pollUrl)
   }
 
@@ -233,6 +239,7 @@ export class CopilotEngine {
 
   startNewThread(): void {
     this.abortActiveRun()
+    this.forgetRunUrls()
     // Bumped so a transcript fetch still in flight cannot land on the empty new thread.
     this.threadSeq += 1
     this.update({ turns: [], sending: false, threadLoading: false })
@@ -252,6 +259,7 @@ export class CopilotEngine {
   // click restores the plan, the charts and the result tables rather than an empty panel.
   async loadThread(threadId: string): Promise<void> {
     this.abortActiveRun()
+    this.forgetRunUrls()
     this.threadSeq += 1
     const token = this.threadSeq
     const fetchThread = this.options.transport.fetchThread
@@ -360,13 +368,18 @@ export class CopilotEngine {
     }
     if (run.status === 'paused' && run.turnId !== undefined) {
       this.patchActiveRun({ status: 'streaming', offline: false })
-      void this.consume(run.turnId, run.lastEventId)
+      void this.consume(run.turnId, run.lastEventId, this.activeStreamUrl, this.activePollUrl)
     }
   }
 
   private abortActiveRun(): void {
     this.controller?.abort()
     this.controller = undefined
+  }
+
+  private forgetRunUrls(): void {
+    this.activeStreamUrl = undefined
+    this.activePollUrl = undefined
   }
 
   private delay(ms: number): Promise<void> {

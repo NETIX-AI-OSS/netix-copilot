@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createTransport } from '../transport'
 import { AgenticTransport } from '../transport/agentic-transport'
 import { AutoTransport } from '../transport/auto-transport'
-import { SseTransport } from '../transport/sse-transport'
+import { DEFAULT_SSE_ENDPOINTS, SseTransport } from '../transport/sse-transport'
 import { StreamInterruptedError } from '../transport/types'
 import type { EnvelopedEvent } from '../types'
 import { errorResponse, frames, instantSleep, jsonResponse, sseResponse } from './helpers'
@@ -29,6 +29,36 @@ async function collect(transport: SseTransport, options = {}): Promise<Enveloped
   })
   return events
 }
+
+// Every string here was read off ml-engine on 2026-08-22: service/urls.py registers the DRF
+// routers, service/views.py the @action url_paths, and service/copilot/sse.py the ASGI SSE path.
+// The trailing slashes are load-bearing: DRF routes carry one, the ASGI SSE route does not.
+describe('DEFAULT_SSE_ENDPOINTS', () => {
+  it('names the routes ml-engine registers, trailing slashes included', () => {
+    expect(DEFAULT_SSE_ENDPOINTS).toEqual({
+      createTurn: '/api/copilot-turn/',
+      streamTurn: '/api/copilot/turn/{turnId}/events',
+      pollTurn: '/api/copilot-turn/{turnId}/',
+      cancelTurn: '/api/copilot-turn/{turnId}/cancel/',
+      approval: '/api/copilot-turn/{turnId}/steps/{stepId}/approval/',
+      threads: '/api/copilot-conversation/',
+      threadTurns: '/api/copilot-turn/?conversation={threadId}',
+    })
+  })
+
+  // sse.match_turn_id rstrips the path, so a trailing slash would still resolve, but the router
+  // dispatches on SSE_PATH_PREFIX + id + SSE_PATH_SUFFIX and that is the spelling create returns.
+  it('keeps the SSE tail off the DRF router and off a trailing slash', () => {
+    expect(DEFAULT_SSE_ENDPOINTS.streamTurn.startsWith('/api/copilot/turn/')).toBe(true)
+    expect(DEFAULT_SSE_ENDPOINTS.streamTurn.endsWith('/events')).toBe(true)
+  })
+
+  it('keeps every DRF route on the trailing slash the router requires', () => {
+    for (const key of ['createTurn', 'pollTurn', 'cancelTurn', 'approval', 'threads'] as const) {
+      expect(DEFAULT_SSE_ENDPOINTS[key].endsWith('/')).toBe(true)
+    }
+  })
+})
 
 describe('SseTransport', () => {
   it('reads a full run off the stream', async () => {
@@ -130,6 +160,38 @@ describe('SseTransport', () => {
     await expect(collect(transport)).rejects.toThrow(/status 500/)
   })
 
+  // ml-engine registers no cursor-poll sibling, so the fallback polls the run's own detail route
+  // and diffs it the way the agentic transport diffs its resource.
+  it('falls back to polling the turn detail the DRF router registers', async () => {
+    const { transport, fetchImpl } = sseTransport([
+      errorResponse(404),
+      jsonResponse({ id: 91, status: 3, response_text: 'partial' }),
+      jsonResponse({ id: 91, status: 1, response_text: 'partial answer' }),
+    ])
+    const events = await collect(transport)
+    expect((fetchImpl.mock.calls[1] as [string])[0]).toBe(
+      'https://ml.example.com/api/copilot-turn/t1/',
+    )
+    expect(events.map((entry) => entry.event.type)).toEqual([
+      'run_started',
+      'message_delta',
+      'message_delta',
+      'done',
+    ])
+  })
+
+  it('never asks a run detail to resume from a cursor it does not understand', async () => {
+    const { transport, fetchImpl } = sseTransport([
+      errorResponse(404),
+      jsonResponse({ id: 91, status: 3, response_text: 'a' }),
+      jsonResponse({ id: 91, status: 1, response_text: 'ab' }),
+    ])
+    await collect(transport)
+    for (const call of fetchImpl.mock.calls.slice(1)) {
+      expect((call as [string])[0]).not.toContain('after=')
+    }
+  })
+
   it('advances the poll cursor between rounds', async () => {
     const { transport, fetchImpl } = sseTransport([
       errorResponse(404),
@@ -141,15 +203,77 @@ describe('SseTransport', () => {
     expect(lastUrl).toContain('after=c1')
   })
 
-  it('creates a turn against the blueprint route', async () => {
+  // ml-engine registers the create on the DRF router as `copilot-turn`, not on the blueprint's
+  // /api/copilot/turns/. Pointing at the blueprint is what made `auto` degrade on every first send.
+  it('creates a turn against the route the DRF router registers', async () => {
     const { transport, fetchImpl } = sseTransport([
-      jsonResponse({ turn_id: 'abc', thread_id: 'th1', stream_url: '/custom/stream' }, 201),
+      jsonResponse(
+        {
+          turn_id: 91,
+          conversation_id: 12,
+          thread_id: 12,
+          request_id: 44,
+          sequence: 1,
+          status: 0,
+          position: 1,
+          stream_url: '/api/copilot/turn/91/events',
+          replayed: false,
+        },
+        201,
+      ),
     ])
-    const created = await transport.createTurn({ prompt: 'hi', scope: { app: 'viz-ui' } })
-    expect(created).toEqual({ turnId: 'abc', threadId: 'th1', streamUrl: '/custom/stream' })
+    const created = await transport.createTurn({ prompt: 'hi', threadId: '12' })
+    expect(created).toEqual({
+      turnId: '91',
+      threadId: '12',
+      streamUrl: '/api/copilot/turn/91/events',
+    })
     const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit]
-    expect(url).toBe('https://ml.example.com/api/copilot/turns/')
-    expect(JSON.parse(String(init.body))).toEqual({ prompt: 'hi', scope: { app: 'viz-ui' } })
+    expect(url).toBe('https://ml.example.com/api/copilot-turn/')
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(String(init.body))).toEqual({ prompt: 'hi', thread_id: '12' })
+  })
+
+  // CopilotAskSerializer declares no scope field, and ml-engine fingerprints the raw body for the
+  // idempotency claim, so a scope key would be dropped and would still change that fingerprint.
+  it('keeps host scope off the create body, since the serializer has no field for it', async () => {
+    const { transport, fetchImpl } = sseTransport([jsonResponse({ turn_id: 'abc' }, 201)])
+    await transport.createTurn({ prompt: 'hi', scope: { app: 'viz-ui', organization_id: 7 } })
+    const init = (fetchImpl.mock.calls[0] as [string, RequestInit])[1]
+    expect(JSON.parse(String(init.body))).toEqual({ prompt: 'hi' })
+  })
+
+  it('sends an Idempotency-Key, so a double-click cannot double-spend the credit', async () => {
+    const { transport, fetchImpl } = sseTransport([jsonResponse({ turn_id: 'abc' }, 201)])
+    await transport.createTurn({ prompt: 'hi' })
+    const init = (fetchImpl.mock.calls[0] as [string, RequestInit])[1]
+    const key = (init.headers as Record<string, string>)['Idempotency-Key']
+    expect(key).toMatch(/^nxcp-/)
+    // ml-engine's normalize_key refuses anything longer than this.
+    expect((key ?? '').length).toBeLessThanOrEqual(128)
+  })
+
+  it('reuses the key the caller minted for this send rather than minting a second one', async () => {
+    const { transport, fetchImpl } = sseTransport([
+      jsonResponse({ turn_id: 'abc' }, 201),
+      jsonResponse({ turn_id: 'abc' }, 200),
+    ])
+    await transport.createTurn({ prompt: 'hi', idempotencyKey: 'nxcp-pinned' })
+    await transport.createTurn({ prompt: 'hi', idempotencyKey: 'nxcp-pinned' })
+    for (const call of fetchImpl.mock.calls) {
+      const init = (call as [string, RequestInit])[1]
+      expect((init.headers as Record<string, string>)['Idempotency-Key']).toBe('nxcp-pinned')
+    }
+  })
+
+  it('reads the turn back through the thread_id ml-engine answers with', async () => {
+    const { transport } = sseTransport([
+      jsonResponse({ turn_id: 91, conversation_id: 12, thread_id: 12 }, 201),
+    ])
+    expect(await transport.createTurn({ prompt: 'hi' })).toEqual({
+      turnId: '91',
+      threadId: '12',
+    })
   })
 
   it('honours a stream_url handed back by create', async () => {

@@ -1,9 +1,6 @@
 // Picks a transport once and remembers the answer.
-//
-// The copilot rollout is not atomic: the streaming routes land on ml-engine at some point after
-// the host apps ship this SDK. `auto` probes the streaming create endpoint on the first turn and
-// permanently falls back to the agentic poll contract when it is not there, so a given tab makes
-// exactly one wasted request in the worst case rather than one per turn.
+// The streaming create is the live contract, so it is what everything defaults to before the first send.
+// A create that 404s means a deployment without those routes; that tab then stays on the agentic poll contract.
 
 import type { CopilotThread, SendTurnInput } from '../types'
 import { CopilotHttpError } from './http'
@@ -65,14 +62,14 @@ export class AutoTransport implements CopilotTransport {
     return (this.resolved ?? this.streaming).respondToApproval(turnId, stepId, approved)
   }
 
+  // Threads are conversations, and a conversation id is what a briefing deep link carries, so the
+  // list and the transcript both read through streaming until a failed create says otherwise.
   listThreads(signal?: AbortSignal): Promise<CopilotThread[]> {
-    return (this.resolved ?? this.polling).listThreads(signal)
+    return (this.resolved ?? this.streaming).listThreads(signal)
   }
 
-  // History reads through whichever transport is live, defaulting to polling for the same reason
-  // listThreads does: before the first send the poll contract is the one known to be deployed.
   async fetchThread(threadId: string, signal?: AbortSignal): Promise<CopilotTranscriptTurn[]> {
-    const target = this.resolved ?? this.polling
+    const target = this.resolved ?? this.streaming
     return target.fetchThread ? target.fetchThread(threadId, signal) : []
   }
 }

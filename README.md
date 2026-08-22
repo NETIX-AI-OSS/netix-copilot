@@ -105,8 +105,9 @@ timing included — so a replayed answer renders through the same components as 
 
 ### Scoping a prompt without showing the scope
 
-ml-engine's agentic contract has no scope field, so a host sometimes has to put the scope in the
-prompt text. `transformPrompt` keeps that off the screen:
+Neither wire contract has a scope field — `CopilotAskSerializer` reads `prompt`, `thread_id` and
+`max_tokens` and nothing else — so a host that needs the model to see its page context puts that
+context in the prompt text. `transformPrompt` keeps it off the screen:
 
 ```tsx
 adapters={{
@@ -124,10 +125,10 @@ is the same split one level down, and `CopilotTurnView.wirePrompt` records the d
 
 There are two wire protocols behind one event vocabulary, and the difference is not academic.
 
-| Transport | Routes                                                                                                           | Status on 2026-08-21                                                                                                                                      |
-| --------- | ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `agentic` | `POST /api/agentic-ml-request/`, `GET /api/agentic-ml-request/{id}/`, `POST /api/agentic-ml-request/{id}/reply/` | **Live.** This is what ml-engine serves and what every existing chat drawer already calls.                                                                |
-| `sse`     | `GET /api/copilot/turn/{id}/events` plus the `copilot-turn` and `copilot-conversation` routers                   | **Partly live.** Streaming, cancel, approval and thread routes all exist. The create does not: a turn is opened through the agentic resource (see below). |
+| Transport | Routes                                                                                                           | Status on 2026-08-22                                                                                             |
+| --------- | ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `agentic` | `POST /api/agentic-ml-request/`, `GET /api/agentic-ml-request/{id}/`, `POST /api/agentic-ml-request/{id}/reply/` | **Live.** What every older chat drawer calls, and the fallback for a deployment without the copilot routes.      |
+| `sse`     | `POST /api/copilot-turn/` then `GET /api/copilot/turn/{id}/events`                                               | **Live.** The create landed with ml-engine's copilot admin API, so streaming is the path `auto` now resolves to. |
 
 `transport: 'auto'` (the default) probes the streaming create endpoint once, and on a 404/405/501
 switches permanently to the agentic contract for the life of the tab. Pin it with
@@ -135,25 +136,30 @@ switches permanently to the agentic contract for the life of the tab. Pin it wit
 
 ### The routes, as ml-engine actually registers them
 
-Verified against `service/urls.py`, `service/views.py` and `service/copilot/sse.py` on
-`feat/copilot-w2-memory-and-actions`, 2026-08-21. Two spellings coexist and neither is a typo: the
-DRF router registers `copilot-turn`, while the SSE endpoint is served by the ASGI path router
-ahead of Django at `copilot/turn`, without a trailing slash.
+Verified against `service/urls.py`, `service/views.py`, `service/serializers.py` and
+`service/copilot/sse.py` on 2026-08-22. Two spellings coexist and neither is a typo: the DRF router
+registers `copilot-turn`, while the SSE endpoint is served by the ASGI path router ahead of Django
+at `copilot/turn`, without a trailing slash.
 
 | Purpose        | Path                                                       |
 | -------------- | ---------------------------------------------------------- |
+| open a turn    | `POST /api/copilot-turn/`                                  |
 | stream a turn  | `GET /api/copilot/turn/{turnId}/events`                    |
+| poll a turn    | `GET /api/copilot-turn/{turnId}/`                          |
 | cancel a turn  | `POST /api/copilot-turn/{turnId}/cancel/`                  |
 | approve a step | `POST /api/copilot-turn/{turnId}/steps/{stepId}/approval/` |
 | list threads   | `GET /api/copilot-conversation/`                           |
 | thread history | `GET /api/copilot-turn/?conversation={threadId}`           |
 
-There is deliberately **no `POST /api/copilot/turns/`**. A turn is opened through
-`POST /api/agentic-ml-request/`, whose response carries the `turn_id` to tail. `auto` therefore
-still resolves to the poll transport on the first send in every current cluster.
+`CopilotAskSerializer` accepts both spellings of the two body keys — `prompt`/`prompt_text` and
+`thread_id`/`conversation` — and declares no scope field, so a scope key would be dropped and
+would still change the idempotency fingerprint. The create honours an `Idempotency-Key` header,
+which the SDK sends on every create: one key per user send, so a repeat of that send replays the
+run and answers `200` with `replayed: true` rather than spending a second time.
 
-The agentic transport polls the request resource and diffs successive snapshots into the same
-events the stream will emit: `response_text` growth becomes `message_delta`, new `execution_log`
+ml-engine registers no cursor-poll route, so when the stream cannot be tailed the SSE transport
+polls the run's own detail and diffs successive snapshots — the same way the agentic transport
+diffs its resource: `response_text` growth becomes `message_delta`, new `execution_log`
 entries become `step_result`, `chart_config` becomes `chart`, and the integer `status` becomes
 `queued` / `done` / `error` / `cancelled`. Nothing above the transport can tell them apart.
 

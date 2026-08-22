@@ -1,17 +1,13 @@
-// The streaming transport.
-//
-// Re-checked against ml-engine's feat/copilot-w2-memory-and-actions branch on 2026-08-21. The
-// stream, cancel, approval and thread routes all exist and the defaults below are now the paths
-// ml-engine actually registers. The one route that does not exist is the create: there is no
-// POST /api/copilot/turns/, because a turn is opened through the agentic request resource and
-// its response carries the turn_id to tail. `auto` therefore still degrades to the poll
-// transport on the first send, which is why that default is left pointing at the blueprint path
-// rather than at a route that would half-work.
+// The streaming transport, re-verified against ml-engine on 2026-08-22.
+// Every route below is one ml-engine registers: the DRF router mounts `copilot-turn` and `copilot-conversation`,
+// and the SSE tail is served by the ASGI path router in service/mcp_server/asgi.py, ahead of Django and with no trailing slash.
 
 import type { CopilotThread, JsonObject, SendTurnInput } from '../types'
 import { decodeFrame, decodePolledEvent } from './decode'
 import type { HttpConfig } from './http'
 import { buildHeaders, CopilotHttpError, joinUrl, request, requestJson } from './http'
+import type { RunSnapshot } from './run-diff'
+import { decodeCursor, diffRunSnapshot, isTerminalStatus } from './run-diff'
 import { readSseStream, SseParser } from './sse'
 import { turnFromRow } from './transcript'
 import type {
@@ -24,6 +20,7 @@ import type {
 import {
   fillTemplate,
   isTerminalEvent,
+  newIdempotencyKey,
   NotStreamableError,
   sleep,
   StreamInterruptedError,
@@ -39,13 +36,11 @@ export interface SseEndpoints {
   threadTurns: string
 }
 
-// The paths ml-engine registers, verified against service/urls.py and service/copilot/sse.py.
-// Note the two spellings: the DRF router registers `copilot-turn`, while the SSE endpoint is
-// served ahead of Django by the ASGI path router at `copilot/turn` with no trailing slash.
+// Note the two spellings: the DRF router registers `copilot-turn`, the ASGI SSE route is `copilot/turn`.
 export const DEFAULT_SSE_ENDPOINTS: SseEndpoints = {
-  createTurn: '/api/copilot/turns/',
+  createTurn: '/api/copilot-turn/',
   streamTurn: '/api/copilot/turn/{turnId}/events',
-  pollTurn: '/api/copilot-turn/{turnId}/events/',
+  pollTurn: '/api/copilot-turn/{turnId}/',
   cancelTurn: '/api/copilot-turn/{turnId}/cancel/',
   approval: '/api/copilot-turn/{turnId}/steps/{stepId}/approval/',
   threads: '/api/copilot-conversation/',
@@ -93,13 +88,16 @@ export class SseTransport implements CopilotTransport {
     this.sleepImpl = config.sleepImpl ?? sleep
   }
 
+  // CopilotAskSerializer takes prompt/thread_id and declares no scope field, so page context
+  // reaches the model through the prompt itself rather than through a key DRF would drop.
   async createTurn(input: SendTurnInput, signal?: AbortSignal): Promise<CreatedTurn> {
     const body: JsonObject = { prompt: input.prompt }
     if (input.threadId !== undefined) body.thread_id = input.threadId
-    if (input.scope !== undefined) body.scope = input.scope
     const payload = await requestJson<unknown>(this.config, this.endpoints.createTurn, {
       method: 'POST',
       body,
+      // ml-engine claims this key before it spends anything, so a repeated create replays the run.
+      headers: { 'Idempotency-Key': input.idempotencyKey ?? newIdempotencyKey() },
       ...(signal ? { signal } : {}),
     })
     if (!isRecord(payload)) throw new Error('Copilot create-turn returned an unexpected payload.')
@@ -184,7 +182,7 @@ export class SseTransport implements CopilotTransport {
       await this.consumeByStreaming(options)
     } catch (error) {
       if (options.signal.aborted) return
-      // A missing or non-SSE stream route still has a cursor-poll sibling in this contract.
+      // No stream to tail: the run itself is still readable, so fall back to polling the turn.
       if (error instanceof CopilotHttpError && error.isRouteMissing) {
         await this.consumeByCursorPolling(options)
         return
@@ -240,30 +238,53 @@ export class SseTransport implements CopilotTransport {
     }
   }
 
+  // ml-engine registers no cursor-poll route: `pollTurn` is the run's own detail, and a poll of it
+  // is diffed exactly the way the agentic transport diffs its resource. An event page is still
+  // accepted, so a host that points `pollTurn` at one of its own keeps working.
   private async consumeByCursorPolling(options: ConsumeRunOptions): Promise<void> {
     const base =
       options.pollUrl ?? fillTemplate(this.endpoints.pollTurn, { turnId: options.turnId })
     const interval = this.config.pollIntervalMs ?? 1000
     let cursor = options.lastEventId
+    const snapshotCursor = decodeCursor(options.lastEventId)
+    let snapshotMode = false
     let idleRounds = 0
 
     while (!options.signal.aborted) {
-      const query = cursor === undefined ? '' : `?after=${encodeURIComponent(cursor)}`
-      const payload = await requestJson<CursorPollResponse>(this.config, `${base}${query}`, {
-        signal: options.signal,
-      })
-      const rows = payload.events ?? payload.results ?? []
+      // A run detail takes no cursor query; only an event page is asked to resume from one.
+      const query =
+        cursor === undefined || snapshotMode ? '' : `?after=${encodeURIComponent(cursor)}`
+      const payload = await requestJson<CursorPollResponse & RunSnapshot>(
+        this.config,
+        `${base}${query}`,
+        { signal: options.signal },
+      )
+      const page = payload.events ?? payload.results
+      let emitted = 0
       let terminal = false
-      for (const row of rows) {
-        const decoded = decodePolledEvent(row)
-        if (!decoded) continue
-        if (decoded.id !== undefined) cursor = decoded.id
-        if (isTerminalEvent(decoded)) terminal = true
-        options.onEvent(decoded)
+
+      if (page === undefined) {
+        snapshotMode = true
+        for (const enveloped of diffRunSnapshot(payload, snapshotCursor, options.turnId)) {
+          emitted += 1
+          if (enveloped.id !== undefined) cursor = enveloped.id
+          options.onEvent(enveloped)
+        }
+        if (isTerminalStatus(payload.status)) return
+      } else {
+        for (const row of page) {
+          const decoded = decodePolledEvent(row)
+          if (!decoded) continue
+          emitted += 1
+          if (decoded.id !== undefined) cursor = decoded.id
+          if (isTerminalEvent(decoded)) terminal = true
+          options.onEvent(decoded)
+        }
+        cursor = payload.next_cursor ?? payload.nextCursor ?? payload.cursor ?? cursor
+        if (terminal || payload.done === true) return
       }
-      cursor = payload.next_cursor ?? payload.nextCursor ?? payload.cursor ?? cursor
-      if (terminal || payload.done === true) return
-      idleRounds = rows.length === 0 ? Math.min(idleRounds + 1, 3) : 0
+
+      idleRounds = emitted === 0 ? Math.min(idleRounds + 1, 3) : 0
       await this.sleepImpl(interval * 2 ** idleRounds, options.signal)
     }
   }

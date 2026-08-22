@@ -321,9 +321,41 @@ describe('AutoTransport.consumeRun', () => {
       baseUrl: 'https://x',
       fetchImpl: (async () => jsonResponse({ id: 4, prompt_text: 'earlier', status: 1 })) as never,
     })
-    const auto = new AutoTransport(new SseTransport({ baseUrl: 'https://x' }), polling)
+    const auto = new AutoTransport(
+      new SseTransport({
+        baseUrl: 'https://x',
+        fetchImpl: (async () => errorResponse(404)) as never,
+      }),
+      polling,
+    )
+    await auto
+      .createTurn({ prompt: 'x', scope: { organization_id: 1, user_id: 2 } })
+      .catch(() => undefined)
     const turns = await auto.fetchThread('4')
     expect(turns[0]?.prompt).toBe('earlier')
+  })
+
+  // A conversation id is what a briefing deep link carries, and only the streaming contract can
+  // read one, so an unresolved auto transport must not send it to the agentic detail route.
+  it('reads threads through streaming before a transport has been chosen', async () => {
+    const sseFetch = vi.fn(
+      async () =>
+        jsonResponse({ results: [{ id: 4, prompt_text: 'earlier', status: 1 }] }) as never,
+    )
+    const agenticFetch = vi.fn(async () => jsonResponse({ results: [] }) as never)
+    const auto = new AutoTransport(
+      new SseTransport({ baseUrl: 'https://x', fetchImpl: sseFetch as never }),
+      new AgenticTransport({ baseUrl: 'https://x', fetchImpl: agenticFetch as never }),
+    )
+    await auto.listThreads()
+    await auto.fetchThread('4')
+    expect(agenticFetch).not.toHaveBeenCalled()
+    expect((sseFetch.mock.calls[0] as unknown as [string])[0]).toBe(
+      'https://x/api/copilot-conversation/',
+    )
+    expect((sseFetch.mock.calls[1] as unknown as [string])[0]).toBe(
+      'https://x/api/copilot-turn/?conversation=4',
+    )
   })
 
   it('reports an empty history for a transport that cannot rebuild one', async () => {
@@ -339,12 +371,18 @@ describe('AutoTransport.consumeRun', () => {
     expect(await auto.fetchThread('4')).toEqual([])
   })
 
-  it('routes cancel and thread listing to polling until a choice is made', async () => {
+  it('routes cancel and thread listing somewhere harmless until a choice is made', async () => {
     const polling = new AgenticTransport({
       baseUrl: 'https://x',
       fetchImpl: (async () => jsonResponse({ results: [] })) as never,
     })
-    const auto = new AutoTransport(new SseTransport({ baseUrl: 'https://x' }), polling)
+    const auto = new AutoTransport(
+      new SseTransport({
+        baseUrl: 'https://x',
+        fetchImpl: (async () => jsonResponse({ results: [] })) as never,
+      }),
+      polling,
+    )
     await expect(auto.cancelTurn('1')).resolves.toBeUndefined()
     await expect(auto.listThreads()).resolves.toEqual([])
   })

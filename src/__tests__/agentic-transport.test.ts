@@ -57,7 +57,20 @@ describe('AgenticTransport.createTurn', () => {
     await transport.createTurn({ prompt: 'hello' })
     const init = (fetchImpl.mock.calls[0] as [string, RequestInit])[1]
     const headers = init.headers as Record<string, string>
-    expect(headers['Idempotency-Key']).toMatch(/^nxcp-7-42-/)
+    expect(headers['Idempotency-Key']).toMatch(/^nxcp-/)
+  })
+
+  it('reuses the key the caller minted for this send, so a retry cannot double-spend', async () => {
+    const { transport, fetchImpl } = transportWith([
+      jsonResponse({ id: 1, status: 0 }, 201),
+      jsonResponse({ id: 1, status: 0 }, 201),
+    ])
+    await transport.createTurn({ prompt: 'hello', idempotencyKey: 'nxcp-fixed' })
+    await transport.createTurn({ prompt: 'hello', idempotencyKey: 'nxcp-fixed' })
+    for (const call of fetchImpl.mock.calls) {
+      const init = (call as [string, RequestInit])[1]
+      expect((init.headers as Record<string, string>)['Idempotency-Key']).toBe('nxcp-fixed')
+    }
   })
 
   it('sends an Authorization header rather than relying on cookies', async () => {

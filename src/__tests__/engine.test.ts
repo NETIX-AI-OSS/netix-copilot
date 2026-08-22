@@ -383,6 +383,30 @@ describe('CopilotEngine teardown grace', () => {
   })
 })
 
+describe('CopilotEngine idempotency', () => {
+  // ml-engine claims the key before it spends anything, so a retry of one send replays the run.
+  it('mints a key per send and hands it to the transport', async () => {
+    const { engine, transport } = makeEngine()
+    await engine.send('hello')
+    const key = transport.createCalls[0]?.idempotencyKey
+    expect(key).toMatch(/^nxcp-/)
+    expect((key ?? '').length).toBeLessThanOrEqual(128)
+  })
+
+  it('gives a second send its own key, so asking twice is not refused as a replay', async () => {
+    const { engine, transport } = makeEngine()
+    await engine.send('hello')
+    transport.emit({ event: { type: 'done' } })
+    transport.finish()
+    await flush()
+    await engine.send('hello')
+    expect(transport.createCalls).toHaveLength(2)
+    expect(transport.createCalls[0]?.idempotencyKey).not.toBe(
+      transport.createCalls[1]?.idempotencyKey,
+    )
+  })
+})
+
 describe('CopilotEngine offline handling', () => {
   it('pauses rather than failing when the browser goes offline', async () => {
     const { engine, transport, online } = makeEngine()
@@ -394,6 +418,35 @@ describe('CopilotEngine offline handling', () => {
     expect(run?.status).toBe('paused')
     expect(run?.offline).toBe(true)
     expect(transport.consumeCalls[0]?.signal.aborted).toBe(true)
+  })
+
+  // The create hands back the URL to tail; re-deriving it from a template on resume would quietly
+  // ignore whatever the server said, which is the drift this whole contract keeps producing.
+  it('resumes on the stream url the server handed back, not a re-derived one', async () => {
+    const { engine, transport, online } = makeEngine()
+    transport.createResult = {
+      turnId: '91',
+      threadId: '12',
+      streamUrl: '/api/copilot/turn/91/events',
+    }
+    await engine.send('hello')
+    transport.emit({ event: { type: 'message_delta', text: 'partial' }, id: 'e-3' })
+    online.set(false)
+    online.set(true)
+    await flush()
+
+    expect(transport.consumeCalls[0]?.streamUrl).toBe('/api/copilot/turn/91/events')
+    expect(transport.consumeCalls[1]?.streamUrl).toBe('/api/copilot/turn/91/events')
+  })
+
+  it('forgets the previous run url when a stored thread is opened', async () => {
+    const { engine, transport } = makeEngine()
+    transport.createResult = { turnId: '91', streamUrl: '/api/copilot/turn/91/events' }
+    await engine.send('hello')
+    await engine.loadThread('12')
+    transport.createResult = { turnId: '92', threadId: '12' }
+    await engine.send('again')
+    expect(transport.consumeCalls[1]?.streamUrl).toBeUndefined()
   })
 
   it('resumes from the last event id when the connection returns', async () => {
