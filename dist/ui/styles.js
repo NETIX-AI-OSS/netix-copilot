@@ -351,14 +351,13 @@ exports.COPILOT_CSS = `
   margin-bottom: 4px;
 }
 .nxcp-composer {
-  display: flex;
+  display: grid;
   gap: 8px;
-  align-items: flex-end;
   padding: 12px 14px;
   border-top: 1px solid var(--nxcp-border);
 }
 .nxcp-textarea {
-  flex: 1;
+  width: 100%;
   min-height: 44px;
   max-height: 180px;
   padding: 10px 12px;
@@ -445,60 +444,76 @@ exports.COPILOT_CSS = `
 .nxcp-compose-shell {
   border-top: 1px solid var(--nxcp-border);
   background: color-mix(in srgb, var(--nxcp-surface) 94%, var(--nxcp-accent) 6%);
-  padding-top: 10px;
+  padding-top: 0;
 }
-.nxcp-compose-shell .nxcp-composer { border-top: 0; padding-top: 9px; }
-.nxcp-tier-selector {
-  position: relative;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 4px;
-  margin: 0 14px;
-  padding: 4px;
-  border: 1px solid var(--nxcp-border);
-  border-radius: calc(var(--nxcp-radius) + 2px);
-  background: var(--nxcp-surface-muted);
-}
-.nxcp-tier-option {
-  min-width: 0;
-  min-height: 38px;
+.nxcp-compose-shell .nxcp-composer { border-top: 0; }
+.nxcp-composer-toolbar,
+.nxcp-composer-actions {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
+  gap: 8px;
+}
+.nxcp-composer-toolbar { justify-content: space-between; min-width: 0; }
+.nxcp-tier-selector {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 168px;
+  min-height: 36px;
+  padding: 0 11px;
   border: 1px solid transparent;
-  border-radius: 9px;
+  border-radius: 999px;
+  background: transparent;
   color: var(--nxcp-text-muted);
-  font-weight: 650;
   cursor: pointer;
-  transition: background-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
+  transition: background-color 140ms ease, color 140ms ease;
 }
-.nxcp-tier-option[data-selected='true'] {
-  color: var(--nxcp-accent-text);
-  background: var(--nxcp-accent);
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--nxcp-accent) 30%, transparent);
+.nxcp-tier-selector:hover {
+  background: color-mix(in srgb, var(--nxcp-surface-muted) 76%, transparent);
+  color: var(--nxcp-text);
 }
-.nxcp-tier-input { position: absolute; opacity: 0; pointer-events: none; }
-.nxcp-tier-option:has(.nxcp-tier-input:focus-visible) {
+.nxcp-tier-selector:has(.nxcp-tier-select:focus-visible) {
   outline: 2px solid var(--nxcp-accent);
   outline-offset: 2px;
 }
-.nxcp-tier-badge {
-  padding: 1px 6px;
-  border-radius: 999px;
-  font-size: 10px;
-  line-height: 1.6;
-  background: color-mix(in srgb, currentColor 13%, transparent);
+.nxcp-tier-orb {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  border: 3px solid color-mix(in srgb, var(--nxcp-text-muted) 45%, transparent);
+  border-right-color: var(--nxcp-accent);
+  border-radius: 50%;
 }
-.nxcp-tier-selector[data-locked='true'] .nxcp-tier-option:not([data-selected='true']) { opacity: .45; }
-.nxcp-tier-selector[data-locked='true'] .nxcp-tier-option { cursor: not-allowed; }
-.nxcp-tier-lock {
-  position: absolute;
-  right: 4px;
-  top: -21px;
-  color: var(--nxcp-text-muted);
-  font-size: 10px;
+.nxcp-tier-select {
+  min-width: 0;
+  max-width: 118px;
+  appearance: none;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-overflow: ellipsis;
 }
+.nxcp-tier-chevron {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg) translateY(-2px);
+}
+.nxcp-tier-selector[data-locked='true'] { opacity: .72; cursor: not-allowed; }
+.nxcp-tier-selector[data-locked='true'] .nxcp-tier-orb {
+  border-color: color-mix(in srgb, var(--nxcp-text-muted) 55%, transparent);
+  border-top-color: var(--nxcp-accent);
+}
+.nxcp-tier-select:disabled { cursor: not-allowed; opacity: 1; }
+.nxcp-composer-actions { margin-left: auto; }
 .nxcp-empty-state { margin: auto; width: 100%; }
 .nxcp-quick-prompts { display: grid; gap: 8px; padding: 8px 10px; }
 .nxcp-quick-prompts button {
@@ -514,14 +529,13 @@ exports.COPILOT_CSS = `
 .nxcp-quick-prompts button:hover { border-color: var(--nxcp-accent); }
 .nxcp-footer-actions { padding: 8px 14px; border-top: 1px solid var(--nxcp-border); }
 @media (max-width: 390px) {
-  .nxcp-tier-selector { margin-inline: 9px; }
-  .nxcp-tier-option { gap: 3px; font-size: 12px; }
-  .nxcp-tier-badge { padding-inline: 4px; }
+  .nxcp-tier-selector { padding-inline: 7px; max-width: 148px; }
+  .nxcp-tier-select { max-width: 102px; }
   .nxcp-composer { padding-inline: 9px; }
   .nxcp-footer { padding-inline: 9px; gap: 6px 10px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .nxcp-tier-option { transition: none; }
+  .nxcp-tier-selector { transition: none; }
 }
 .nxcp-sr-only {
   position: absolute;

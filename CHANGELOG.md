@@ -16,6 +16,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Replaced the wide segmented tier control with a compact, composer-integrated tier picker.
 - Every create and reply sends the selected tier and surface, including the polling fallback.
 - Restored conversations recover their tier; failed initial creates remain editable; New resets to Base.
 - The composer and usage footer now share polished light/dark, narrow-width, and reduced-motion styles.

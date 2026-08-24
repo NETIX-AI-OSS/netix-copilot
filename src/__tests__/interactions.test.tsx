@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { useEffect } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -106,6 +106,40 @@ async function startRunWithApproval(transport: DecisionTransport) {
     },
   })
 }
+
+describe('compact model tier picker', () => {
+  beforeEach(() => {
+    engineRef = undefined
+    window.localStorage.clear()
+  })
+
+  it('offers friendly tier labels through one keyboard-native control', () => {
+    mountDock(new DecisionTransport())
+    const picker = screen.getByRole('combobox', {
+      name: 'Response quality',
+    }) as HTMLSelectElement
+    expect(picker.value).toBe('base')
+    expect(screen.getByRole('option', { name: 'Base 1x' })).toBeTruthy()
+    expect(screen.getByRole('option', { name: 'High 5x' })).toBeTruthy()
+    expect(screen.getByRole('option', { name: 'Max 20x' })).toBeTruthy()
+    fireEvent.change(picker, { target: { value: 'high' } })
+    expect(picker.value).toBe('high')
+  })
+
+  it('locks the compact picker after the first successful create', async () => {
+    mountDock(new DecisionTransport())
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
+      target: { value: 'hello' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    await waitFor(() => {
+      const picker = screen.getByRole('combobox', {
+        name: 'Response quality',
+      }) as HTMLSelectElement
+      expect(picker.disabled).toBe(true)
+    })
+  })
+})
 
 // The reason this matters is the mount pattern: both host apps mount the dock on every
 // authenticated route, not on a few leaf pages. ml-engine's main carries no copilot routes, so on

@@ -37,7 +37,6 @@ export function Composer({ autoFocus }: ComposerProps): ReactNode {
 
   return (
     <div className='nxcp-compose-shell'>
-      <ModelTierSelector />
       <div className='nxcp-composer'>
         <textarea
           className='nxcp-textarea'
@@ -51,14 +50,19 @@ export function Composer({ autoFocus }: ComposerProps): ReactNode {
           onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setValue(event.target.value)}
           onKeyDown={onKeyDown}
         />
-        {busy ? (
-          <button type='button' className='nxcp-icon-button' onClick={() => engine.cancel()}>
-            {t('copilot.composer.stop')}
-          </button>
-        ) : null}
-        <button type='button' className='nxcp-send' disabled={!canSend} onClick={submit}>
-          {t('copilot.composer.send')}
-        </button>
+        <div className='nxcp-composer-toolbar'>
+          <ModelTierSelector />
+          <div className='nxcp-composer-actions'>
+            {busy ? (
+              <button type='button' className='nxcp-icon-button' onClick={() => engine.cancel()}>
+                {t('copilot.composer.stop')}
+              </button>
+            ) : null}
+            <button type='button' className='nxcp-send' disabled={!canSend} onClick={submit}>
+              {t('copilot.composer.send')}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )
