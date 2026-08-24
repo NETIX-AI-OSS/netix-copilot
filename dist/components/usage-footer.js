@@ -11,7 +11,14 @@ const types_1 = require("../types");
 function UsageFooter({ usage, transport, modelTier }) {
     const { t } = (0, context_1.useCopilotAdapters)();
     const items = [];
-    if (modelTier)
+    const hasUsage = usage?.tokensIn !== undefined ||
+        usage?.tokensOut !== undefined ||
+        usage?.calls !== undefined ||
+        usage?.costUsd !== undefined ||
+        usage?.creditsRemaining !== undefined;
+    // The composer already exposes the active tier. Repeat it here only when it
+    // gives context to real usage data, keeping an idle composer visually quiet.
+    if (modelTier && hasUsage)
         items.push((0, types_1.modelTierMetadata)(modelTier).label);
     if (usage?.tokensIn !== undefined || usage?.tokensOut !== undefined) {
         items.push(t('copilot.usage.tokens', {

@@ -19,8 +19,16 @@ export interface UsageFooterProps {
 export function UsageFooter({ usage, transport, modelTier }: UsageFooterProps): ReactNode {
   const { t } = useCopilotAdapters()
   const items: string[] = []
+  const hasUsage =
+    usage?.tokensIn !== undefined ||
+    usage?.tokensOut !== undefined ||
+    usage?.calls !== undefined ||
+    usage?.costUsd !== undefined ||
+    usage?.creditsRemaining !== undefined
 
-  if (modelTier) items.push(modelTierMetadata(modelTier).label)
+  // The composer already exposes the active tier. Repeat it here only when it
+  // gives context to real usage data, keeping an idle composer visually quiet.
+  if (modelTier && hasUsage) items.push(modelTierMetadata(modelTier).label)
   if (usage?.tokensIn !== undefined || usage?.tokensOut !== undefined) {
     items.push(
       t('copilot.usage.tokens', {
