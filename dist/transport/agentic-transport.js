@@ -33,10 +33,11 @@ class AgenticTransport {
         if (input.threadId !== undefined && input.threadId !== '') {
             await (0, http_1.request)(this.config, (0, types_1.fillTemplate)(this.endpoints.reply, { turnId: input.threadId }), {
                 method: 'POST',
-                body: { message: input.prompt },
+                body: { message: input.prompt, model_tier: input.modelTier ?? 'base' },
+                headers: { 'Idempotency-Key': input.idempotencyKey ?? (0, types_1.newIdempotencyKey)() },
                 ...(signal ? { signal } : {}),
             });
-            return { turnId: input.threadId, threadId: input.threadId };
+            return { turnId: input.threadId, threadId: input.threadId, modelTier: input.modelTier };
         }
         const identity = this.config.getIdentity?.();
         const scope = input.scope ?? {};
@@ -50,6 +51,8 @@ class AgenticTransport {
             organization_id: organizationId,
             user_id: userId,
             prompt_text: input.prompt,
+            model_tier: input.modelTier ?? 'base',
+            conversation_surface: input.surface ?? 'web',
         };
         if (this.config.maxTokens !== undefined)
             body.max_tokens = this.config.maxTokens;
@@ -63,7 +66,7 @@ class AgenticTransport {
         const turnId = payload.id === undefined ? undefined : String(payload.id);
         if (turnId === undefined)
             throw new Error('ml-engine create returned no request id.');
-        return { turnId, threadId: turnId };
+        return { turnId, threadId: turnId, modelTier: input.modelTier };
     }
     // The live contract has no cancel route. Aborting the local reader is all the client can do,
     // and the run finishes server-side regardless.

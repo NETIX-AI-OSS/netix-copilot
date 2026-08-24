@@ -47,6 +47,8 @@ function applyEvent(state, event) {
             const next = { ...state, status: 'streaming', turnId: event.turnId };
             if (event.model !== undefined)
                 next.model = event.model;
+            if (event.modelTier !== undefined)
+                next.modelTier = event.modelTier;
             if (event.creditsRemaining !== undefined) {
                 next.usage = mergeUsage(state.usage, { creditsRemaining: event.creditsRemaining });
             }

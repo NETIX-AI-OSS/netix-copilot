@@ -63,6 +63,8 @@ describe('AgenticTransport.createTurn', () => {
       organization_id: 7,
       user_id: 42,
       prompt_text: 'why is AHU-1 offline?',
+      model_tier: 'base',
+      conversation_surface: 'web',
     })
   })
 
@@ -103,7 +105,10 @@ describe('AgenticTransport.createTurn', () => {
     expect(created).toEqual({ turnId: '55', threadId: '55' })
     const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit]
     expect(url).toBe('https://ml.example.com/api/agentic-ml-request/55/reply/')
-    expect(JSON.parse(String(init.body))).toEqual({ message: 'and the week before?' })
+    expect(JSON.parse(String(init.body))).toEqual({
+      message: 'and the week before?',
+      model_tier: 'base',
+    })
   })
 
   it('refuses to guess the identity the endpoint requires', async () => {

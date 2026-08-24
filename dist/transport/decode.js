@@ -234,6 +234,9 @@ function toEvent(name, payload) {
             const model = asString(pick(payload, ['model', 'model_name']));
             if (model !== undefined)
                 event.model = model;
+            const tier = asString(pick(payload, ['model_tier', 'modelTier']));
+            if (tier === 'base' || tier === 'high' || tier === 'max')
+                event.modelTier = tier;
             const credits = asNumber(pick(payload, ['credits_remaining', 'creditsRemaining']));
             if (credits !== undefined)
                 event.creditsRemaining = credits;

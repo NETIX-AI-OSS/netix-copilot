@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useCopilotAdapters, useCopilotSend, useCopilotState } from '../adapters/context'
 import { useCopilotEngine } from '../adapters/context'
 import { isRunActive } from '../runtime/run-store'
+import { ModelTierSelector } from './model-tier-selector'
 
 export interface ComposerProps {
   autoFocus?: boolean
@@ -35,25 +36,30 @@ export function Composer({ autoFocus }: ComposerProps): ReactNode {
   }
 
   return (
-    <div className='nxcp-composer'>
-      <textarea
-        className='nxcp-textarea'
-        value={value}
-        rows={1}
-        autoFocus={autoFocus}
-        placeholder={state.online ? t('copilot.composer.placeholder') : t('copilot.status.offline')}
-        aria-label={t('copilot.composer.label')}
-        onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setValue(event.target.value)}
-        onKeyDown={onKeyDown}
-      />
-      {busy ? (
-        <button type='button' className='nxcp-icon-button' onClick={() => engine.cancel()}>
-          {t('copilot.composer.stop')}
+    <div className='nxcp-compose-shell'>
+      <ModelTierSelector />
+      <div className='nxcp-composer'>
+        <textarea
+          className='nxcp-textarea'
+          value={value}
+          rows={1}
+          autoFocus={autoFocus}
+          placeholder={
+            state.online ? t('copilot.composer.placeholder') : t('copilot.status.offline')
+          }
+          aria-label={t('copilot.composer.label')}
+          onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setValue(event.target.value)}
+          onKeyDown={onKeyDown}
+        />
+        {busy ? (
+          <button type='button' className='nxcp-icon-button' onClick={() => engine.cancel()}>
+            {t('copilot.composer.stop')}
+          </button>
+        ) : null}
+        <button type='button' className='nxcp-send' disabled={!canSend} onClick={submit}>
+          {t('copilot.composer.send')}
         </button>
-      ) : null}
-      <button type='button' className='nxcp-send' disabled={!canSend} onClick={submit}>
-        {t('copilot.composer.send')}
-      </button>
+      </div>
     </div>
   )
 }

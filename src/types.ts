@@ -6,6 +6,24 @@ export type JsonValue =
 
 export type JsonObject = { [key: string]: JsonValue }
 
+export type ModelTier = 'base' | 'high' | 'max'
+
+export interface ModelTierMetadata {
+  key: ModelTier
+  label: string
+  multiplier: 1 | 5 | 20
+}
+
+export const MODEL_TIERS: readonly ModelTierMetadata[] = [
+  { key: 'base', label: 'Base 1x', multiplier: 1 },
+  { key: 'high', label: 'High 5x', multiplier: 5 },
+  { key: 'max', label: 'Max 20x', multiplier: 20 },
+] as const
+
+export function modelTierMetadata(tier: ModelTier): ModelTierMetadata {
+  return MODEL_TIERS.find((entry) => entry.key === tier) ?? MODEL_TIERS[0]!
+}
+
 // Every event name the backend can emit. `plan` is optional in the sense that a run may
 // never emit it -- the direct router bypasses the orchestrator -- so nothing may block on it.
 export const COPILOT_EVENT_NAMES = [
@@ -88,6 +106,7 @@ export interface RunStartedEvent {
   type: 'run_started'
   turnId: string
   model?: string
+  modelTier?: ModelTier
   creditsRemaining?: number
 }
 
@@ -186,12 +205,14 @@ export interface CopilotThread {
   title: string
   updatedAt: number
   messageCount?: number
+  modelTier?: ModelTier
 }
 
 export interface RunState {
   status: RunStatus
   turnId?: string
   model?: string
+  modelTier?: ModelTier
   // Set the moment a `plan` arrives. Stays false for direct-router runs and that is not an error.
   hasPlan: boolean
   steps: PlanStep[]
@@ -219,4 +240,6 @@ export interface SendTurnInput {
   scope?: JsonObject
   // Sent as the Idempotency-Key header, so a retried create replays instead of spending again.
   idempotencyKey?: string
+  modelTier?: ModelTier
+  surface?: 'web' | 'mobile' | 'embed' | 'api'
 }

@@ -252,6 +252,9 @@ function runFromRow(row, idPrefix, base) {
         charts: chartsFrom(row, idPrefix),
         text,
         ...(row.model ? { model: row.model } : {}),
+        ...(row.model_tier === 'base' || row.model_tier === 'high' || row.model_tier === 'max'
+            ? { modelTier: row.model_tier }
+            : {}),
         ...(Object.keys(usage).length > 0 ? { usage } : {}),
         ...(error ? { error: { message: error } } : {}),
     };

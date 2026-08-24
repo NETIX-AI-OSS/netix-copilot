@@ -5,6 +5,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-08-24
+
+### Added
+
+- Public Base 1x, High 5x, and Max 20x model tiers with server-owned provider mappings.
+- `useCopilotModelTier` and an accessible, responsive `ModelTierSelector` that locks with a thread.
+- A non-portalled `CopilotPanel` with host slots for headers, footers, prompts, empty states, and turns.
+- Conversation-surface filtering for isolated global and embedded history.
+
+### Changed
+
+- Every create and reply sends the selected tier and surface, including the polling fallback.
+- Restored conversations recover their tier; failed initial creates remain editable; New resets to Base.
+- The composer and usage footer now share polished light/dark, narrow-width, and reduced-motion styles.
+- Usage renders friendly tier labels only, and renders provider cost only when the server supplies it.
+
 ## [0.2.3] — 2026-08-22
 
 Both defects here were found while adopting streaming in cafm-v2-ui, and both undo the same thing:

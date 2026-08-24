@@ -4,6 +4,14 @@ export type JsonValue = string | number | boolean | null | JsonValue[] | {
 export type JsonObject = {
     [key: string]: JsonValue;
 };
+export type ModelTier = 'base' | 'high' | 'max';
+export interface ModelTierMetadata {
+    key: ModelTier;
+    label: string;
+    multiplier: 1 | 5 | 20;
+}
+export declare const MODEL_TIERS: readonly ModelTierMetadata[];
+export declare function modelTierMetadata(tier: ModelTier): ModelTierMetadata;
 export declare const COPILOT_EVENT_NAMES: readonly ["run_started", "queued", "plan", "step_started", "step_result", "message_delta", "chart", "usage", "done", "error", "cancelled"];
 export type CopilotEventName = (typeof COPILOT_EVENT_NAMES)[number];
 export type StepStatus = 'pending' | 'running' | 'ok' | 'error' | 'skipped' | 'awaiting_approval' | 'rejected' | 'cancelled';
@@ -44,6 +52,7 @@ export interface RunStartedEvent {
     type: 'run_started';
     turnId: string;
     model?: string;
+    modelTier?: ModelTier;
     creditsRemaining?: number;
 }
 export interface QueuedEvent {
@@ -112,11 +121,13 @@ export interface CopilotThread {
     title: string;
     updatedAt: number;
     messageCount?: number;
+    modelTier?: ModelTier;
 }
 export interface RunState {
     status: RunStatus;
     turnId?: string;
     model?: string;
+    modelTier?: ModelTier;
     hasPlan: boolean;
     steps: PlanStep[];
     queuePosition?: number;
@@ -135,4 +146,6 @@ export interface SendTurnInput {
     threadId?: string;
     scope?: JsonObject;
     idempotencyKey?: string;
+    modelTier?: ModelTier;
+    surface?: 'web' | 'mobile' | 'embed' | 'api';
 }

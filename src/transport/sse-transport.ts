@@ -59,6 +59,7 @@ export interface SseTransportConfig extends HttpConfig {
   endpoints?: Partial<SseEndpoints>
   pollIntervalMs?: number
   sleepImpl?: (ms: number, signal?: AbortSignal) => Promise<void>
+  conversationSurface?: 'web' | 'mobile' | 'embed' | 'api'
 }
 
 interface CursorPollResponse {
@@ -101,6 +102,8 @@ export class SseTransport implements CopilotTransport {
   async createTurn(input: SendTurnInput, signal?: AbortSignal): Promise<CreatedTurn> {
     const body: JsonObject = { prompt: input.prompt }
     if (input.threadId !== undefined) body.thread_id = input.threadId
+    if (input.modelTier !== undefined) body.model_tier = input.modelTier
+    if (input.surface !== undefined) body.surface = input.surface
     const payload = await requestJson<unknown>(this.config, this.endpoints.createTurn, {
       method: 'POST',
       body,
@@ -118,6 +121,10 @@ export class SseTransport implements CopilotTransport {
     if (streamUrl !== undefined) created.streamUrl = streamUrl
     const pollUrl = readString(payload, ['poll_url', 'pollUrl', 'events_url'])
     if (pollUrl !== undefined) created.pollUrl = pollUrl
+    const modelTier = readString(payload, ['model_tier', 'modelTier'])
+    if (modelTier === 'base' || modelTier === 'high' || modelTier === 'max') {
+      created.modelTier = modelTier
+    }
     return created
   }
 
@@ -153,7 +160,12 @@ export class SseTransport implements CopilotTransport {
   }
 
   async listThreads(signal?: AbortSignal): Promise<CopilotThread[]> {
-    const payload = await this.readOrEmpty<unknown>(this.endpoints.threads, signal)
+    const separator = this.endpoints.threads.includes('?') ? '&' : '?'
+    const surface = this.config.conversationSurface
+    const path = surface
+      ? `${this.endpoints.threads}${separator}surface=${encodeURIComponent(surface)}`
+      : this.endpoints.threads
+    const payload = await this.readOrEmpty<unknown>(path, signal)
     const rows = Array.isArray(payload)
       ? payload
       : isRecord(payload) && Array.isArray(payload.results)
@@ -176,6 +188,10 @@ export class SseTransport implements CopilotTransport {
       }
       const count = row.message_count ?? row.messageCount ?? row.turn_count
       if (typeof count === 'number') thread.messageCount = count
+      const modelTier = readString(row, ['model_tier', 'modelTier'])
+      if (modelTier === 'base' || modelTier === 'high' || modelTier === 'max') {
+        thread.modelTier = modelTier
+      }
       return thread
     })
   }

@@ -23,6 +23,7 @@ export interface CopilotRunRow {
     result_data?: unknown;
     messages?: unknown;
     model?: string | null;
+    model_tier?: string | null;
     created_on?: string;
     updated_on?: string;
 }

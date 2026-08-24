@@ -6,6 +6,7 @@ const react_1 = require("react");
 const context_1 = require("../adapters/context");
 const context_2 = require("../adapters/context");
 const run_store_1 = require("../runtime/run-store");
+const model_tier_selector_1 = require("./model-tier-selector");
 function Composer({ autoFocus }) {
     const { t } = (0, context_1.useCopilotAdapters)();
     const send = (0, context_1.useCopilotSend)();
@@ -28,5 +29,5 @@ function Composer({ autoFocus }) {
             submit();
         }
     };
-    return ((0, jsx_runtime_1.jsxs)("div", { className: 'nxcp-composer', children: [(0, jsx_runtime_1.jsx)("textarea", { className: 'nxcp-textarea', value: value, rows: 1, autoFocus: autoFocus, placeholder: state.online ? t('copilot.composer.placeholder') : t('copilot.status.offline'), "aria-label": t('copilot.composer.label'), onChange: (event) => setValue(event.target.value), onKeyDown: onKeyDown }), busy ? ((0, jsx_runtime_1.jsx)("button", { type: 'button', className: 'nxcp-icon-button', onClick: () => engine.cancel(), children: t('copilot.composer.stop') })) : null, (0, jsx_runtime_1.jsx)("button", { type: 'button', className: 'nxcp-send', disabled: !canSend, onClick: submit, children: t('copilot.composer.send') })] }));
+    return ((0, jsx_runtime_1.jsxs)("div", { className: 'nxcp-compose-shell', children: [(0, jsx_runtime_1.jsx)(model_tier_selector_1.ModelTierSelector, {}), (0, jsx_runtime_1.jsxs)("div", { className: 'nxcp-composer', children: [(0, jsx_runtime_1.jsx)("textarea", { className: 'nxcp-textarea', value: value, rows: 1, autoFocus: autoFocus, placeholder: state.online ? t('copilot.composer.placeholder') : t('copilot.status.offline'), "aria-label": t('copilot.composer.label'), onChange: (event) => setValue(event.target.value), onKeyDown: onKeyDown }), busy ? ((0, jsx_runtime_1.jsx)("button", { type: 'button', className: 'nxcp-icon-button', onClick: () => engine.cancel(), children: t('copilot.composer.stop') })) : null, (0, jsx_runtime_1.jsx)("button", { type: 'button', className: 'nxcp-send', disabled: !canSend, onClick: submit, children: t('copilot.composer.send') })] })] }));
 }

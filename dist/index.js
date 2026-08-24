@@ -1,8 +1,8 @@
 "use strict";
 // Public surface of netix-copilot.
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.NotStreamableError = exports.normalizeResultData = exports.newIdempotencyKey = exports.isTerminalStatus = exports.isTerminalEvent = exports.isRouteMissing = exports.isResourceError = exports.formatResultCell = exports.encodeCursor = exports.diffRunSnapshot = exports.DEFAULT_SSE_ENDPOINTS = exports.DEFAULT_AGENTIC_ENDPOINTS = exports.decodePolledEvent = exports.decodeFrame = exports.decodeCursor = exports.createTransport = exports.CopilotHttpError = exports.AutoTransport = exports.AgenticTransport = exports.AGENTIC_STATUS = exports.isRunFinished = exports.isRunActive = exports.initialRunState = exports.applyEvent = exports.applyEnveloped = exports.CopilotEngine = exports.browserOnlineSource = exports.UsageFooter = exports.ThreadList = exports.RunBadges = exports.ResultTable = exports.PlanTimeline = exports.MessageView = exports.renderInline = exports.parseBlocks = exports.Markdown = exports.CopilotDock = exports.Composer = exports.ApprovalCard = exports.resolveCopilotPrompt = exports.buildScope = exports.useCopilotState = exports.useCopilotSend = exports.useCopilotRun = exports.useCopilotEngine = exports.useCopilotEnabled = exports.useCopilotConfig = exports.useCopilotAdapters = exports.DEFAULT_COPILOT_PERMISSION = exports.CopilotProvider = void 0;
-exports.COPILOT_Z_INDEX_NOTES = exports.COPILOT_Z_INDEX = exports.themeToCssVars = exports.injectCopilotStyles = exports.COPILOT_STYLE_ELEMENT_ID = exports.COPILOT_CSS = exports.interpolate = exports.createFallbackTranslate = exports.COPILOT_STRINGS = exports.COPILOT_EVENT_NAMES = exports.turnFromRow = exports.transcriptFromRequest = exports.StreamInterruptedError = exports.SseTransport = exports.SseParser = exports.readSseStream = void 0;
+exports.isTerminalStatus = exports.isTerminalEvent = exports.isRouteMissing = exports.isResourceError = exports.formatResultCell = exports.encodeCursor = exports.diffRunSnapshot = exports.DEFAULT_SSE_ENDPOINTS = exports.DEFAULT_AGENTIC_ENDPOINTS = exports.decodePolledEvent = exports.decodeFrame = exports.decodeCursor = exports.createTransport = exports.CopilotHttpError = exports.AutoTransport = exports.AgenticTransport = exports.AGENTIC_STATUS = exports.isRunFinished = exports.isRunActive = exports.initialRunState = exports.applyEvent = exports.applyEnveloped = exports.CopilotEngine = exports.browserOnlineSource = exports.UsageFooter = exports.ThreadList = exports.RunBadges = exports.ResultTable = exports.PlanTimeline = exports.CopilotPanel = exports.ModelTierSelector = exports.MessageView = exports.renderInline = exports.parseBlocks = exports.Markdown = exports.CopilotDock = exports.Composer = exports.ApprovalCard = exports.resolveCopilotPrompt = exports.buildScope = exports.useCopilotState = exports.useCopilotSend = exports.useCopilotRun = exports.useCopilotModelTier = exports.useCopilotEngine = exports.useCopilotEnabled = exports.useCopilotConfig = exports.useCopilotAdapters = exports.DEFAULT_COPILOT_PERMISSION = exports.CopilotProvider = void 0;
+exports.COPILOT_Z_INDEX_NOTES = exports.COPILOT_Z_INDEX = exports.themeToCssVars = exports.injectCopilotStyles = exports.COPILOT_STYLE_ELEMENT_ID = exports.COPILOT_CSS = exports.interpolate = exports.createFallbackTranslate = exports.COPILOT_STRINGS = exports.modelTierMetadata = exports.MODEL_TIERS = exports.COPILOT_EVENT_NAMES = exports.turnFromRow = exports.transcriptFromRequest = exports.StreamInterruptedError = exports.SseTransport = exports.SseParser = exports.readSseStream = exports.NotStreamableError = exports.normalizeResultData = exports.newIdempotencyKey = void 0;
 var context_1 = require("./adapters/context");
 Object.defineProperty(exports, "CopilotProvider", { enumerable: true, get: function () { return context_1.CopilotProvider; } });
 Object.defineProperty(exports, "DEFAULT_COPILOT_PERMISSION", { enumerable: true, get: function () { return context_1.DEFAULT_COPILOT_PERMISSION; } });
@@ -10,6 +10,7 @@ Object.defineProperty(exports, "useCopilotAdapters", { enumerable: true, get: fu
 Object.defineProperty(exports, "useCopilotConfig", { enumerable: true, get: function () { return context_1.useCopilotConfig; } });
 Object.defineProperty(exports, "useCopilotEnabled", { enumerable: true, get: function () { return context_1.useCopilotEnabled; } });
 Object.defineProperty(exports, "useCopilotEngine", { enumerable: true, get: function () { return context_1.useCopilotEngine; } });
+Object.defineProperty(exports, "useCopilotModelTier", { enumerable: true, get: function () { return context_1.useCopilotModelTier; } });
 Object.defineProperty(exports, "useCopilotRun", { enumerable: true, get: function () { return context_1.useCopilotRun; } });
 Object.defineProperty(exports, "useCopilotSend", { enumerable: true, get: function () { return context_1.useCopilotSend; } });
 Object.defineProperty(exports, "useCopilotState", { enumerable: true, get: function () { return context_1.useCopilotState; } });
@@ -28,6 +29,10 @@ Object.defineProperty(exports, "parseBlocks", { enumerable: true, get: function 
 Object.defineProperty(exports, "renderInline", { enumerable: true, get: function () { return markdown_1.renderInline; } });
 var message_view_1 = require("./components/message-view");
 Object.defineProperty(exports, "MessageView", { enumerable: true, get: function () { return message_view_1.MessageView; } });
+var model_tier_selector_1 = require("./components/model-tier-selector");
+Object.defineProperty(exports, "ModelTierSelector", { enumerable: true, get: function () { return model_tier_selector_1.ModelTierSelector; } });
+var panel_1 = require("./components/panel");
+Object.defineProperty(exports, "CopilotPanel", { enumerable: true, get: function () { return panel_1.CopilotPanel; } });
 var plan_timeline_1 = require("./components/plan-timeline");
 Object.defineProperty(exports, "PlanTimeline", { enumerable: true, get: function () { return plan_timeline_1.PlanTimeline; } });
 var result_table_1 = require("./components/result-table");
@@ -76,6 +81,8 @@ Object.defineProperty(exports, "transcriptFromRequest", { enumerable: true, get:
 Object.defineProperty(exports, "turnFromRow", { enumerable: true, get: function () { return transport_1.turnFromRow; } });
 var types_2 = require("./types");
 Object.defineProperty(exports, "COPILOT_EVENT_NAMES", { enumerable: true, get: function () { return types_2.COPILOT_EVENT_NAMES; } });
+Object.defineProperty(exports, "MODEL_TIERS", { enumerable: true, get: function () { return types_2.MODEL_TIERS; } });
+Object.defineProperty(exports, "modelTierMetadata", { enumerable: true, get: function () { return types_2.modelTierMetadata; } });
 var i18n_1 = require("./ui/i18n");
 Object.defineProperty(exports, "COPILOT_STRINGS", { enumerable: true, get: function () { return i18n_1.COPILOT_STRINGS; } });
 Object.defineProperty(exports, "createFallbackTranslate", { enumerable: true, get: function () { return i18n_1.createFallbackTranslate; } });

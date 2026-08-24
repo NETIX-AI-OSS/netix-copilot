@@ -15,6 +15,7 @@ export interface SseTransportConfig extends HttpConfig {
     endpoints?: Partial<SseEndpoints>;
     pollIntervalMs?: number;
     sleepImpl?: (ms: number, signal?: AbortSignal) => Promise<void>;
+    conversationSurface?: 'web' | 'mobile' | 'embed' | 'api';
 }
 export declare class SseTransport implements CopilotTransport {
     readonly name: TransportName;

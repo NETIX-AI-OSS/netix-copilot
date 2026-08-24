@@ -1,4 +1,4 @@
-import type { CopilotThread, EnvelopedEvent, RunState, SendTurnInput } from '../types';
+import type { CopilotThread, EnvelopedEvent, ModelTier, RunState, SendTurnInput } from '../types';
 export type TransportMode = 'auto' | 'sse' | 'agentic';
 export type TransportName = 'sse' | 'agentic';
 export interface CreatedTurn {
@@ -6,6 +6,7 @@ export interface CreatedTurn {
     threadId?: string;
     streamUrl?: string;
     pollUrl?: string;
+    modelTier?: ModelTier;
 }
 export interface ConsumeRunOptions {
     turnId: string;

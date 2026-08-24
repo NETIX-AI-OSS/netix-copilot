@@ -1,5 +1,5 @@
 export type { CopilotConfig, CopilotProviderProps } from './adapters/context';
-export { CopilotProvider, DEFAULT_COPILOT_PERMISSION, useCopilotAdapters, useCopilotConfig, useCopilotEnabled, useCopilotEngine, useCopilotRun, useCopilotSend, useCopilotState, } from './adapters/context';
+export { CopilotProvider, DEFAULT_COPILOT_PERMISSION, useCopilotAdapters, useCopilotConfig, useCopilotEnabled, useCopilotEngine, useCopilotModelTier, useCopilotRun, useCopilotSend, useCopilotState, } from './adapters/context';
 export type { CopilotAdapters, CopilotChartRenderContext, CopilotMarkdownRenderContext, CopilotPageContext, CopilotPrompt, CopilotPromptContext, CopilotPromptTransform, CopilotThemeTokens, CopilotUser, TranslateFn, } from './adapters/types';
 export { buildScope, resolveCopilotPrompt } from './adapters/types';
 export type { ApprovalCardProps } from './components/approval-card';
@@ -12,6 +12,10 @@ export type { MarkdownProps } from './components/markdown';
 export { Markdown, parseBlocks, renderInline } from './components/markdown';
 export type { MessageViewProps } from './components/message-view';
 export { MessageView } from './components/message-view';
+export type { ModelTierSelectorProps } from './components/model-tier-selector';
+export { ModelTierSelector } from './components/model-tier-selector';
+export type { CopilotPanelProps } from './components/panel';
+export { CopilotPanel } from './components/panel';
 export type { PlanTimelineProps } from './components/plan-timeline';
 export { PlanTimeline } from './components/plan-timeline';
 export type { ResultTableProps } from './components/result-table';
@@ -28,7 +32,7 @@ export { applyEnveloped, applyEvent, initialRunState, isRunActive, isRunFinished
 export type { AgenticEndpoints, AgenticIdentity, AuthTokenProvider, ConsumeRunOptions, CopilotFetch, CopilotRunRow, CopilotTranscriptTurn, CopilotTransport, CopilotTransportConfig, CreatedTurn, HttpConfig, RunCursor, RunSnapshot, SseEndpoints, SseFrame, SseTransportConfig, TransportMode, TransportName, } from './transport';
 export { AGENTIC_STATUS, AgenticTransport, AutoTransport, CopilotHttpError, createTransport, decodeCursor, decodeFrame, decodePolledEvent, DEFAULT_AGENTIC_ENDPOINTS, DEFAULT_SSE_ENDPOINTS, diffRunSnapshot, encodeCursor, formatResultCell, isResourceError, isRouteMissing, isTerminalEvent, isTerminalStatus, newIdempotencyKey, normalizeResultData, NotStreamableError, readSseStream, SseParser, SseTransport, StreamInterruptedError, transcriptFromRequest, turnFromRow, } from './transport';
 export type * from './types';
-export { COPILOT_EVENT_NAMES } from './types';
+export { COPILOT_EVENT_NAMES, MODEL_TIERS, modelTierMetadata } from './types';
 export type { TranslateVars } from './ui/i18n';
 export { COPILOT_STRINGS, createFallbackTranslate, interpolate } from './ui/i18n';
 export { COPILOT_CSS, COPILOT_STYLE_ELEMENT_ID, injectCopilotStyles } from './ui/styles';

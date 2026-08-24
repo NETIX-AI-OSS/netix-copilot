@@ -7,6 +7,7 @@ exports.useCopilotAdapters = useCopilotAdapters;
 exports.useCopilotConfig = useCopilotConfig;
 exports.useCopilotState = useCopilotState;
 exports.useCopilotRun = useCopilotRun;
+exports.useCopilotModelTier = useCopilotModelTier;
 exports.useCopilotEnabled = useCopilotEnabled;
 exports.useCopilotSend = useCopilotSend;
 const jsx_runtime_1 = require("react/jsx-runtime");
@@ -30,6 +31,7 @@ function CopilotProvider({ config, adapters, transport, children, }) {
             : { maxResumeAttempts: config.maxResumeAttempts }),
         ...(config.resumeDelayMs === undefined ? {} : { resumeDelayMs: config.resumeDelayMs }),
         ...(config.logger ? { logger: config.logger } : {}),
+        ...(config.conversationSurface ? { conversationSurface: config.conversationSurface } : {}),
     }));
     (0, react_1.useEffect)(() => {
         engine.retain();
@@ -66,6 +68,15 @@ function useCopilotState() {
 function useCopilotRun() {
     const state = useCopilotState();
     return state.turns[state.turns.length - 1]?.run;
+}
+function useCopilotModelTier() {
+    const engine = useCopilotEngine();
+    const state = useCopilotState();
+    return {
+        tier: state.modelTier,
+        locked: state.modelTierLocked,
+        setTier: (tier) => engine.setModelTier(tier),
+    };
 }
 // Whether the current user may use the copilot at all.
 function useCopilotEnabled() {

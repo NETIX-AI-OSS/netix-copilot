@@ -18,6 +18,7 @@ import type { CopilotTransportConfig } from '../transport'
 import { createTransport } from '../transport'
 import type { CopilotTransport } from '../transport/types'
 import type { RunState } from '../types'
+import type { ModelTier } from '../types'
 import type { CopilotAdapters } from './types'
 import { buildScope, resolveCopilotPrompt } from './types'
 
@@ -29,6 +30,7 @@ export interface CopilotConfig extends CopilotTransportConfig {
   maxResumeAttempts?: number
   resumeDelayMs?: number
   logger?: CopilotLogger
+  conversationSurface?: 'web' | 'mobile' | 'embed' | 'api'
 }
 
 interface CopilotContextValue {
@@ -70,6 +72,7 @@ export function CopilotProvider({
           : { maxResumeAttempts: config.maxResumeAttempts }),
         ...(config.resumeDelayMs === undefined ? {} : { resumeDelayMs: config.resumeDelayMs }),
         ...(config.logger ? { logger: config.logger } : {}),
+        ...(config.conversationSurface ? { conversationSurface: config.conversationSurface } : {}),
       }),
   )
 
@@ -119,6 +122,22 @@ export function useCopilotState(): CopilotEngineState {
 export function useCopilotRun(): RunState | undefined {
   const state = useCopilotState()
   return state.turns[state.turns.length - 1]?.run
+}
+
+export interface CopilotModelTierState {
+  tier: ModelTier
+  locked: boolean
+  setTier: (tier: ModelTier) => void
+}
+
+export function useCopilotModelTier(): CopilotModelTierState {
+  const engine = useCopilotEngine()
+  const state = useCopilotState()
+  return {
+    tier: state.modelTier,
+    locked: state.modelTierLocked,
+    setTier: (tier) => engine.setModelTier(tier),
+  }
 }
 
 // Whether the current user may use the copilot at all.

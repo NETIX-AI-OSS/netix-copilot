@@ -3,15 +3,16 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.UsageFooter = UsageFooter;
 const jsx_runtime_1 = require("react/jsx-runtime");
 const context_1 = require("../adapters/context");
+const types_1 = require("../types");
 // Every figure here is conditional, including the credit balance. ml-engine returns
 // credits_remaining inside `usage` on both the SSE event and the REST payload, computed live from
 // UserMLConfiguration and deliberately not persisted -- so it is present on a fresh answer and
 // absent on a replayed one. Absent means unknown, which is why it hides rather than showing zero.
-function UsageFooter({ usage, transport, model }) {
+function UsageFooter({ usage, transport, modelTier }) {
     const { t } = (0, context_1.useCopilotAdapters)();
     const items = [];
-    if (model)
-        items.push(model);
+    if (modelTier)
+        items.push((0, types_1.modelTierMetadata)(modelTier).label);
     if (usage?.tokensIn !== undefined || usage?.tokensOut !== undefined) {
         items.push(t('copilot.usage.tokens', {
             in: usage.tokensIn ?? 0,

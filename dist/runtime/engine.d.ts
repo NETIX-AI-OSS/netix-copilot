@@ -1,5 +1,5 @@
 import type { CopilotTransport, TransportName } from '../transport/types';
-import type { CopilotThread, JsonObject, RunState } from '../types';
+import type { CopilotThread, JsonObject, ModelTier, RunState } from '../types';
 export interface CopilotTurnView {
     id: string;
     prompt: string;
@@ -19,6 +19,8 @@ export interface CopilotEngineState {
     threads: CopilotThread[];
     threadsLoaded: boolean;
     threadLoading: boolean;
+    modelTier: ModelTier;
+    modelTierLocked: boolean;
 }
 export interface OnlineSource {
     isOnline(): boolean;
@@ -38,6 +40,7 @@ export interface CopilotEngineOptions {
     now?: () => number;
     setTimeoutImpl?: (handler: () => void, ms: number) => ReturnType<typeof setTimeout>;
     clearTimeoutImpl?: (handle: ReturnType<typeof setTimeout>) => void;
+    conversationSurface?: 'web' | 'mobile' | 'embed' | 'api';
 }
 export declare function browserOnlineSource(): OnlineSource;
 export declare class CopilotEngine {
@@ -70,6 +73,7 @@ export declare class CopilotEngine {
     selectThread(threadId: string): void;
     loadThread(threadId: string): Promise<void>;
     loadThreads(): Promise<void>;
+    setModelTier(tier: ModelTier): void;
     dispose(): void;
     private consume;
     private handleConnectivity;

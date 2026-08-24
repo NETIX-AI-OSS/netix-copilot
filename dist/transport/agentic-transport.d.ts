@@ -21,6 +21,7 @@ export interface AgenticTransportConfig extends HttpConfig {
     pollIntervalMs?: number;
     maxPollIntervalMs?: number;
     sleepImpl?: (ms: number, signal?: AbortSignal) => Promise<void>;
+    conversationSurface?: 'web' | 'mobile' | 'embed' | 'api';
 }
 export declare class AgenticTransport implements CopilotTransport {
     readonly name: TransportName;

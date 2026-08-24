@@ -21,6 +21,8 @@ exports.COPILOT_STRINGS = {
     'copilot.composer.placeholder': 'Ask about this page…',
     'copilot.composer.send': 'Send',
     'copilot.composer.stop': 'Stop',
+    'copilot.tier.label': 'Response quality',
+    'copilot.tier.locked': 'Locked for this conversation',
     'copilot.threads.label': 'Conversations',
     'copilot.threads.loading': 'Loading conversations…',
     'copilot.threads.empty': 'No earlier conversations.',

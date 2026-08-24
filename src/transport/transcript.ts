@@ -47,6 +47,7 @@ export interface CopilotRunRow {
   result_data?: unknown
   messages?: unknown
   model?: string | null
+  model_tier?: string | null
   created_on?: string
   updated_on?: string
 }
@@ -258,6 +259,9 @@ export function runFromRow(row: CopilotRunRow, idPrefix: string, base: RunState)
     charts: chartsFrom(row, idPrefix),
     text,
     ...(row.model ? { model: row.model } : {}),
+    ...(row.model_tier === 'base' || row.model_tier === 'high' || row.model_tier === 'max'
+      ? { modelTier: row.model_tier }
+      : {}),
     ...(Object.keys(usage).length > 0 ? { usage } : {}),
     ...(error ? { error: { message: error } } : {}),
   }

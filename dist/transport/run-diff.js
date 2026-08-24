@@ -77,7 +77,17 @@ function diffRunSnapshot(snapshot, cursor, turnId) {
     };
     if (!cursor.runStarted) {
         cursor.runStarted = true;
-        emit({ type: 'run_started', turnId });
+        const modelTier = snapshot.model_tier === 'base' ||
+            snapshot.model_tier === 'high' ||
+            snapshot.model_tier === 'max'
+            ? snapshot.model_tier
+            : undefined;
+        emit({
+            type: 'run_started',
+            turnId,
+            ...(snapshot.model ? { model: snapshot.model } : {}),
+            ...(modelTier ? { modelTier } : {}),
+        });
     }
     if (snapshot.status === transcript_1.AGENTIC_STATUS.PENDING && !cursor.queuedEmitted) {
         cursor.queuedEmitted = true;

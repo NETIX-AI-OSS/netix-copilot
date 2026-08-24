@@ -63,6 +63,8 @@ class CopilotEngine {
             threads: [],
             threadsLoaded: false,
             threadLoading: false,
+            modelTier: 'base',
+            modelTierLocked: false,
         };
         this.unsubscribeOnline = onlineSource.subscribe((online) => this.handleConnectivity(online));
     }
@@ -112,7 +114,12 @@ class CopilotEngine {
         };
         this.update({ turns: [...this.snapshot.turns, turn], sending: true });
         // Minted once per user send, so any retry of this send replays server-side instead of spending again.
-        const input = { prompt: wire, idempotencyKey: (0, types_1.newIdempotencyKey)() };
+        const input = {
+            prompt: wire,
+            idempotencyKey: (0, types_1.newIdempotencyKey)(),
+            modelTier: this.snapshot.modelTier,
+            surface: this.options.conversationSurface ?? 'web',
+        };
         if (this.snapshot.threadId !== undefined)
             input.threadId = this.snapshot.threadId;
         if (scope !== undefined)
@@ -122,7 +129,7 @@ class CopilotEngine {
             created = await this.options.transport.createTurn(input);
         }
         catch (error) {
-            this.update({ sending: false });
+            this.update({ sending: false, modelTierLocked: this.snapshot.threadId !== undefined });
             this.pushEvent({
                 type: 'error',
                 error: { message: describeError(error), retryable: true },
@@ -132,6 +139,8 @@ class CopilotEngine {
         this.update({
             sending: false,
             threadId: created.threadId ?? this.snapshot.threadId ?? created.turnId,
+            modelTier: created.modelTier ?? this.snapshot.modelTier,
+            modelTierLocked: true,
         });
         this.patchActiveRun({ turnId: created.turnId });
         this.activeStreamUrl = created.streamUrl;
@@ -162,7 +171,13 @@ class CopilotEngine {
         this.forgetRunUrls();
         // Bumped so a transcript fetch still in flight cannot land on the empty new thread.
         this.threadSeq += 1;
-        this.update({ turns: [], sending: false, threadLoading: false });
+        this.update({
+            turns: [],
+            sending: false,
+            threadLoading: false,
+            modelTier: 'base',
+            modelTierLocked: false,
+        });
         const next = { ...this.snapshot };
         delete next.threadId;
         this.snapshot = next;
@@ -194,7 +209,8 @@ class CopilotEngine {
             // A later selection, or a send that already started a new turn, owns the panel now.
             if (token !== this.threadSeq || this.snapshot.turns.length > 0)
                 return;
-            this.update({ turns, threadLoading: false });
+            const restoredTier = turns.find((turn) => turn.run.modelTier)?.run.modelTier ?? 'base';
+            this.update({ turns, threadLoading: false, modelTier: restoredTier, modelTierLocked: true });
         }
         catch (error) {
             if (token !== this.threadSeq)
@@ -212,6 +228,11 @@ class CopilotEngine {
             this.options.logger?.warn('netix-copilot: thread list unavailable', error);
             this.update({ threadsLoaded: true });
         }
+    }
+    setModelTier(tier) {
+        if (this.snapshot.modelTierLocked || this.snapshot.sending || this.isStreaming)
+            return;
+        this.update({ modelTier: tier });
     }
     dispose() {
         if (this.disposed)

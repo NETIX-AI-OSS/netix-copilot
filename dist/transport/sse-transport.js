@@ -46,6 +46,10 @@ class SseTransport {
         const body = { prompt: input.prompt };
         if (input.threadId !== undefined)
             body.thread_id = input.threadId;
+        if (input.modelTier !== undefined)
+            body.model_tier = input.modelTier;
+        if (input.surface !== undefined)
+            body.surface = input.surface;
         const payload = await (0, http_1.requestJson)(this.config, this.endpoints.createTurn, {
             method: 'POST',
             body,
@@ -68,6 +72,10 @@ class SseTransport {
         const pollUrl = readString(payload, ['poll_url', 'pollUrl', 'events_url']);
         if (pollUrl !== undefined)
             created.pollUrl = pollUrl;
+        const modelTier = readString(payload, ['model_tier', 'modelTier']);
+        if (modelTier === 'base' || modelTier === 'high' || modelTier === 'max') {
+            created.modelTier = modelTier;
+        }
         return created;
     }
     async cancelTurn(turnId) {
@@ -99,7 +107,12 @@ class SseTransport {
         return rows.filter(isRecord).map((row, index) => (0, transcript_1.turnFromRow)(row, threadId, index));
     }
     async listThreads(signal) {
-        const payload = await this.readOrEmpty(this.endpoints.threads, signal);
+        const separator = this.endpoints.threads.includes('?') ? '&' : '?';
+        const surface = this.config.conversationSurface;
+        const path = surface
+            ? `${this.endpoints.threads}${separator}surface=${encodeURIComponent(surface)}`
+            : this.endpoints.threads;
+        const payload = await this.readOrEmpty(path, signal);
         const rows = Array.isArray(payload)
             ? payload
             : isRecord(payload) && Array.isArray(payload.results)
@@ -123,6 +136,10 @@ class SseTransport {
             const count = row.message_count ?? row.messageCount ?? row.turn_count;
             if (typeof count === 'number')
                 thread.messageCount = count;
+            const modelTier = readString(row, ['model_tier', 'modelTier']);
+            if (modelTier === 'base' || modelTier === 'high' || modelTier === 'max') {
+                thread.modelTier = modelTier;
+            }
             return thread;
         });
     }

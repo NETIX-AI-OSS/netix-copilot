@@ -48,6 +48,7 @@ export interface AgenticTransportConfig extends HttpConfig {
   pollIntervalMs?: number
   maxPollIntervalMs?: number
   sleepImpl?: (ms: number, signal?: AbortSignal) => Promise<void>
+  conversationSurface?: 'web' | 'mobile' | 'embed' | 'api'
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -72,10 +73,11 @@ export class AgenticTransport implements CopilotTransport {
     if (input.threadId !== undefined && input.threadId !== '') {
       await request(this.config, fillTemplate(this.endpoints.reply, { turnId: input.threadId }), {
         method: 'POST',
-        body: { message: input.prompt },
+        body: { message: input.prompt, model_tier: input.modelTier ?? 'base' },
+        headers: { 'Idempotency-Key': input.idempotencyKey ?? newIdempotencyKey() },
         ...(signal ? { signal } : {}),
       })
-      return { turnId: input.threadId, threadId: input.threadId }
+      return { turnId: input.threadId, threadId: input.threadId, modelTier: input.modelTier }
     }
 
     const identity = this.config.getIdentity?.()
@@ -92,6 +94,8 @@ export class AgenticTransport implements CopilotTransport {
       organization_id: organizationId,
       user_id: userId,
       prompt_text: input.prompt,
+      model_tier: input.modelTier ?? 'base',
+      conversation_surface: input.surface ?? 'web',
     }
     if (this.config.maxTokens !== undefined) body.max_tokens = this.config.maxTokens
 
@@ -104,7 +108,7 @@ export class AgenticTransport implements CopilotTransport {
     })
     const turnId = payload.id === undefined ? undefined : String(payload.id)
     if (turnId === undefined) throw new Error('ml-engine create returned no request id.')
-    return { turnId, threadId: turnId }
+    return { turnId, threadId: turnId, modelTier: input.modelTier }
   }
 
   // The live contract has no cancel route. Aborting the local reader is all the client can do,

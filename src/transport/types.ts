@@ -4,7 +4,7 @@
 // 'auto' tries the streaming create once and remembers the answer, corroborating a missing-route
 // reply against the contract itself before it settles on the poll contract.
 
-import type { CopilotThread, EnvelopedEvent, RunState, SendTurnInput } from '../types'
+import type { CopilotThread, EnvelopedEvent, ModelTier, RunState, SendTurnInput } from '../types'
 
 export type TransportMode = 'auto' | 'sse' | 'agentic'
 
@@ -15,6 +15,7 @@ export interface CreatedTurn {
   threadId?: string
   streamUrl?: string
   pollUrl?: string
+  modelTier?: ModelTier
 }
 
 export interface ConsumeRunOptions {

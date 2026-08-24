@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { CopilotEngineState, OnlineSource } from '../runtime/engine'
 import { browserOnlineSource, CopilotEngine } from '../runtime/engine'
+import { initialRunState } from '../runtime/run-store'
 import type {
   ConsumeRunOptions,
   CopilotTranscriptTurn,
@@ -225,6 +226,44 @@ describe('CopilotEngine state', () => {
     await engine.send('one')
     engine.selectThread('other')
     expect(engine.getSnapshot()).toMatchObject({ threadId: 'other', turns: [] })
+  })
+})
+
+describe('CopilotEngine model tiers', () => {
+  it('sends the selected tier and surface, then locks it', async () => {
+    const { engine, transport } = makeEngine({ conversationSurface: 'embed' })
+    engine.setModelTier('high')
+    await engine.send('build it')
+    expect(transport.createCalls[0]).toMatchObject({ modelTier: 'high', surface: 'embed' })
+    expect(engine.getSnapshot()).toMatchObject({ modelTier: 'high', modelTierLocked: true })
+    engine.setModelTier('max')
+    expect(engine.getSnapshot().modelTier).toBe('high')
+  })
+
+  it('unlocks after a failed first create', async () => {
+    const { engine, transport } = makeEngine()
+    engine.setModelTier('max')
+    transport.createError = new Error('offline')
+    await engine.send('hello')
+    expect(engine.getSnapshot().modelTierLocked).toBe(false)
+    engine.setModelTier('base')
+    expect(engine.getSnapshot().modelTier).toBe('base')
+  })
+
+  it('restores a thread tier and resets new chats to Base', async () => {
+    const { engine, transport } = makeEngine()
+    transport.thread = [
+      {
+        id: 'turn-1',
+        prompt: 'hello',
+        createdAt: 1,
+        run: { ...initialRunState(), status: 'done', modelTier: 'max' },
+      },
+    ]
+    await engine.loadThread('thread-1')
+    expect(engine.getSnapshot()).toMatchObject({ modelTier: 'max', modelTierLocked: true })
+    engine.startNewThread()
+    expect(engine.getSnapshot()).toMatchObject({ modelTier: 'base', modelTierLocked: false })
   })
 })
 

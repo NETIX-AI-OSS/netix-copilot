@@ -2,7 +2,16 @@
 // Core domain types for the NETIX copilot.
 // The event vocabulary here mirrors exactly what ml-engine emits over SSE.
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.COPILOT_EVENT_NAMES = void 0;
+exports.COPILOT_EVENT_NAMES = exports.MODEL_TIERS = void 0;
+exports.modelTierMetadata = modelTierMetadata;
+exports.MODEL_TIERS = [
+    { key: 'base', label: 'Base 1x', multiplier: 1 },
+    { key: 'high', label: 'High 5x', multiplier: 5 },
+    { key: 'max', label: 'Max 20x', multiplier: 20 },
+];
+function modelTierMetadata(tier) {
+    return exports.MODEL_TIERS.find((entry) => entry.key === tier) ?? exports.MODEL_TIERS[0];
+}
 // Every event name the backend can emit. `plan` is optional in the sense that a run may
 // never emit it -- the direct router bypasses the orchestrator -- so nothing may block on it.
 exports.COPILOT_EVENT_NAMES = [

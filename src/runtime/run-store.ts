@@ -49,6 +49,7 @@ export function applyEvent(state: RunState, event: CopilotEvent): RunState {
     case 'run_started': {
       const next: RunState = { ...state, status: 'streaming', turnId: event.turnId }
       if (event.model !== undefined) next.model = event.model
+      if (event.modelTier !== undefined) next.modelTier = event.modelTier
       if (event.creditsRemaining !== undefined) {
         next.usage = mergeUsage(state.usage, { creditsRemaining: event.creditsRemaining })
       }

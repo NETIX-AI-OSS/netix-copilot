@@ -1,5 +1,19 @@
 # netix-copilot
 
+Version 0.3.0 adds server-controlled Base 1x, High 5x, and Max 20x response tiers and a shared
+`CopilotPanel` for docked or embedded chat. Provider model identifiers are deliberately not part of
+the public package metadata.
+
+```tsx
+<CopilotProvider config={{ ...config, conversationSurface: 'embed' }} adapters={adapters}>
+  <CopilotPanel
+    title='Assistant'
+    quickPrompts={['Summarize this page', 'Show recent issues']}
+    renderTurn={(turn, defaultView) => <HostTurn turn={turn}>{defaultView}</HostTurn>}
+  />
+</CopilotProvider>
+```
+
 One persistent, streaming copilot dock for the NETIX front ends, replacing the per-app chat
 drawers that were copy-pasted across viz-ui, cafm-v2-ui and their siblings.
 
