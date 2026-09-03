@@ -59,6 +59,7 @@ export const COPILOT_STRINGS: Record<string, string> = {
   'copilot.trace.stepOf': 'Reasoning — step {k} of {n}',
   'copilot.trace.summary': 'Reasoned for {seconds} s · {steps} steps',
   'copilot.trace.summaryAgents': 'Reasoned for {seconds} s · {steps} steps · {agents} specialists',
+  'copilot.trace.summarySteps': 'Reasoned · {steps} steps',
   'copilot.trace.stopped': 'Stopped after {steps} steps',
   'copilot.trace.awaiting': 'Waiting for your approval',
   'copilot.trace.expiresIn': 'Expires in {seconds} s',

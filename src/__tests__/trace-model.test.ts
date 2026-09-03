@@ -6,6 +6,7 @@ import {
   buildTraceTree,
   countSteps,
   isAgentStep,
+  stepElapsedMs,
 } from '../runtime/trace-model'
 import type { PlanStep } from '../types'
 
@@ -54,5 +55,14 @@ describe('trace model', () => {
     const tree = buildTraceTree([step('x', { parentId: 'x' })])
     expect(tree).toHaveLength(1)
     expect(tree[0]!.children).toHaveLength(0)
+  })
+
+  it('times a step from its reported duration, else its timestamps, else the live clock', () => {
+    expect(stepElapsedMs(step('a', { durationMs: 420, startedAt: 0, finishedAt: 9_000 }))).toBe(420)
+    expect(stepElapsedMs(step('b', { startedAt: 1_000, finishedAt: 3_500 }))).toBe(2_500)
+    expect(stepElapsedMs(step('c', { status: 'running', startedAt: 1_000 }), 1_750)).toBe(750)
+    expect(stepElapsedMs(step('d', { status: 'running', startedAt: 1_000 }))).toBeUndefined()
+    expect(stepElapsedMs(step('e', { status: 'pending', startedAt: 1_000 }), 5_000)).toBeUndefined()
+    expect(stepElapsedMs(step('f'), 5_000)).toBeUndefined()
   })
 })
