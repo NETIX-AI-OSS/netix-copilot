@@ -50,6 +50,7 @@ export const COPILOT_STRINGS: Record<string, string> = {
   'copilot.history.confirmDelete': 'Delete this conversation?',
   'copilot.history.deleted': 'Conversation deleted',
   'copilot.history.untitled': 'Untitled',
+  'copilot.history.cancel': 'Cancel',
   'copilot.plan.label': 'Plan',
   'copilot.steps.label': 'Steps',
   'copilot.trace.label': 'Reasoning',
