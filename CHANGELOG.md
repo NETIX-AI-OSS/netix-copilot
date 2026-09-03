@@ -5,6 +5,58 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-09-03
+
+### Added
+
+- **Reasoning trace.** A collapsible card between the prompt and the answer that narrates the run
+  from real events only: plan reasoning and lines, specialist agent cards with the orchestrator's
+  task and side-by-side lanes, nested tool rows with humanised labels, live elapsed time, approval
+  highlighting, a "Rebuilt from history" chip, and raw output on read-back. Auto-collapses on
+  `done`, stays open on error, collapsed on replay. `ReasoningTrace`, `AgentCard`, `StepRow`,
+  `StatusGlyph`, `buildTraceTree` and the `trace-labels` helpers are exported.
+- **Additive events.** `agent_started` and `agent_finished`; `route`/`agent` on `run_started`;
+  `agent`, `parentId`, `depth`, `startedAt`, `finishedAt`, `task`, `feedback`, `expiresAt` on
+  steps; `code` on `error`. An old backend that sends none of them still works: the flat stream
+  renders as before and the terminal read-back re-parents rows from `sub_execution_log`, so the
+  finished and replayed trace is the correct tree either way (`RunState.rebuilt` says when).
+- **Modes.** `CopilotDock` gains `mode` / `onModeChange` (`min` · `dock` · `full`), a `Launcher`
+  pill, a maximise button, and a bottom sheet under 640 px. Full mode is composed by the host from
+  `HistoryRail` + `CopilotPanel layout='full'`.
+- **History rail.** Grouped (Pinned · Today · Yesterday · This week · Earlier), searchable, with
+  Pin / Rename / Delete backed by `PATCH` and `DELETE /api/copilot-conversation/{id}/`;
+  `engine.updateThread`, `engine.deleteThread`, `useCopilotThreadActions`, `ThreadPatch`. The dock
+  shows the same list in a header popover (`ThreadsPopover`).
+- **Answer strip and artifacts.** `AnswerActions` (Copy, Regenerate, grounding caption),
+  `ArtifactCard` wrapping charts and the result table, `Download CSV` (`toCsv`), `EmptyState` with
+  `quickPrompts` chips.
+- **Composer.** Page-context chip (`engine.setContextEnabled`, surfaced to `transformPrompt` as
+  `includeContext`), Send flips to Stop, auto-grow textarea, disclaimer and Enter hint.
+- **Adapters.** `notify` (toast override; the SDK's `ToastHost` pill is the default), `labels`
+  (tool/agent name overrides), `quickPrompts`; `useNotify`, `notificationStore`,
+  `setFallbackNotify`.
+- **Tokens.** `surface2/3`, `borderStrong`, `textTertiary`, `accentSubtle`, `domainCafm`,
+  `radiusSm/Md/Lg/Pill`, `elev1/2/3`, `focusRing`, `motionFast/Base`; keyframes `nxcp-modal-in`,
+  `nxcp-spin`, `nxcp-blink`, `nxcp-dot`, `nxcp-halo`, all zeroed under `prefers-reduced-motion`.
+- i18n keys for the trace, agents, tools, composer, history, answer strip, artifacts and tiers.
+
+### Changed
+
+- The dock is a floating card (430 px wide by default, capped at 94vw, `min(680px, 86vh)` tall,
+  inset 22 px) with a FAB launcher instead of a full-height panel and text button; the width drag
+  and its 320–720 clamp are unchanged. Threads no longer render as a strip inside the dock.
+- `MessageView` renders the new assistant anatomy: meta row, trace, answer, artifact cards,
+  approval cards, banners, answer strip. `PlanTimeline` and `RunBadges` stay exported as the
+  legacy flat views. The queue position and "Thinking…" now live in the trace header.
+- The stylesheet uses logical properties throughout, so RTL hosts need no override; every colour
+  goes through a `--nxcp-*` token with a light default on `.nxcp-root`.
+- `ThreadList` is a thin wrapper over `HistoryRail`. `--nxcp-shadow` aliases `--nxcp-elev-3` and
+  `--nxcp-surface-2` aliases `--nxcp-surface-muted`, so a host setting only the v0.3 names still
+  paints.
+- Host-facing class names (`.nxcp-root .nxcp-launcher .nxcp-dock .nxcp-panel .nxcp-turn
+.nxcp-bubble .nxcp-answer .nxcp-chart .nxcp-badge .nxcp-empty` …), `renderTurn` semantics and
+  every v0.3 export are preserved.
+
 ## [0.3.0] — 2026-08-24
 
 ### Added

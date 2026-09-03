@@ -301,39 +301,6 @@ const SHELL_CSS = `
   flex-direction: column;
   gap: 14px;
 }
-.nxcp-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 1px 8px;
-  border: 1px solid var(--nxcp-border);
-  border-radius: var(--nxcp-radius-pill);
-  background: var(--nxcp-surface-2);
-  color: var(--nxcp-text-muted);
-  font-size: 11.5px;
-  line-height: 1.7;
-  white-space: nowrap;
-}
-.nxcp-badge[data-tone='tool'] {
-  font-family: var(--nxcp-mono);
-  font-size: 11px;
-}
-.nxcp-badge[data-run-status='done'] {
-  border-color: var(--nxcp-success);
-  color: var(--nxcp-success);
-}
-.nxcp-badge[data-run-status='error'] {
-  border-color: var(--nxcp-danger);
-  color: var(--nxcp-danger);
-}
-.nxcp-badge[data-run-status='streaming'],
-.nxcp-badge[data-run-status='queued'] {
-  border-color: var(--nxcp-accent);
-  color: var(--nxcp-accent);
-}
-.nxcp-badge[data-run-status='paused'] {
-  border-color: var(--nxcp-warning);
-  color: var(--nxcp-warning);
-}
 .nxcp-history {
   display: flex;
   flex-direction: column;

@@ -3,7 +3,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.UsageFooter = UsageFooter;
 const jsx_runtime_1 = require("react/jsx-runtime");
 const context_1 = require("../adapters/context");
-const types_1 = require("../types");
 // Every figure here is conditional, including the credit balance. ml-engine returns
 // credits_remaining inside `usage` on both the SSE event and the REST payload, computed live from
 // UserMLConfiguration and deliberately not persisted -- so it is present on a fresh answer and
@@ -19,7 +18,7 @@ function UsageFooter({ usage, transport, modelTier }) {
     // The composer already exposes the active tier. Repeat it here only when it
     // gives context to real usage data, keeping an idle composer visually quiet.
     if (modelTier && hasUsage)
-        items.push((0, types_1.modelTierMetadata)(modelTier).label);
+        items.push(t(`copilot.tier.${modelTier}`));
     if (usage?.tokensIn !== undefined || usage?.tokensOut !== undefined) {
         items.push(t('copilot.usage.tokens', {
             in: usage.tokensIn ?? 0,
@@ -35,5 +34,5 @@ function UsageFooter({ usage, transport, modelTier }) {
     }
     if (items.length === 0 && transport === undefined)
         return null;
-    return ((0, jsx_runtime_1.jsxs)("footer", { className: 'nxcp-footer', children: [items.map((item) => ((0, jsx_runtime_1.jsx)("span", { className: 'nxcp-usage-item', children: item }, item))), transport ? ((0, jsx_runtime_1.jsx)("span", { className: 'nxcp-usage-item', style: { marginLeft: 'auto' }, "data-transport": transport, children: t(`copilot.transport.${transport}`) })) : null] }));
+    return ((0, jsx_runtime_1.jsxs)("footer", { className: 'nxcp-footer', children: [items.map((item) => ((0, jsx_runtime_1.jsx)("span", { className: 'nxcp-usage-item', children: item }, item))), transport ? ((0, jsx_runtime_1.jsx)("span", { className: 'nxcp-usage-item', "data-transport": transport, children: t(`copilot.transport.${transport}`) })) : null] }));
 }

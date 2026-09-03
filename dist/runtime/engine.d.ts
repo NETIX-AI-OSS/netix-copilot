@@ -1,4 +1,4 @@
-import type { CopilotTransport, TransportName } from '../transport/types';
+import type { CopilotTransport, ThreadPatch, TransportName } from '../transport/types';
 import type { CopilotThread, JsonObject, ModelTier, RunState } from '../types';
 export interface CopilotTurnView {
     id: string;
@@ -21,6 +21,7 @@ export interface CopilotEngineState {
     threadLoading: boolean;
     modelTier: ModelTier;
     modelTierLocked: boolean;
+    contextEnabled: boolean;
 }
 export interface OnlineSource {
     isOnline(): boolean;
@@ -74,6 +75,9 @@ export declare class CopilotEngine {
     loadThread(threadId: string): Promise<void>;
     loadThreads(): Promise<void>;
     setModelTier(tier: ModelTier): void;
+    setContextEnabled(enabled: boolean): void;
+    updateThread(threadId: string, patch: ThreadPatch): Promise<void>;
+    deleteThread(threadId: string): Promise<void>;
     dispose(): void;
     private consume;
     private handleConnectivity;

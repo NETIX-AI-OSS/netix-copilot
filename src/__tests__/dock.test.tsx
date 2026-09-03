@@ -169,7 +169,8 @@ describe('CopilotDock', () => {
     transport.emit({ event: { type: 'message_delta', text: 'Answer.' } })
     transport.emit({ event: { type: 'done' } })
 
-    expect(screen.getByText('asset_get')).toBeTruthy()
+    // The trace humanises tool names: sentence-cased with underscores as spaces.
+    expect(screen.getByText('Asset get')).toBeTruthy()
     expect(screen.getByText('Answer.')).toBeTruthy()
   })
 

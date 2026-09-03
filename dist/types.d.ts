@@ -12,17 +12,33 @@ export interface ModelTierMetadata {
 }
 export declare const MODEL_TIERS: readonly ModelTierMetadata[];
 export declare function modelTierMetadata(tier: ModelTier): ModelTierMetadata;
-export declare const COPILOT_EVENT_NAMES: readonly ["run_started", "queued", "plan", "step_started", "step_result", "message_delta", "chart", "usage", "done", "error", "cancelled"];
+export declare const COPILOT_EVENT_NAMES: readonly ["run_started", "queued", "plan", "agent_started", "agent_finished", "step_started", "step_result", "message_delta", "chart", "usage", "done", "error", "cancelled"];
 export type CopilotEventName = (typeof COPILOT_EVENT_NAMES)[number];
 export type StepStatus = 'pending' | 'running' | 'ok' | 'error' | 'skipped' | 'awaiting_approval' | 'rejected' | 'cancelled';
+export type StepKind = 'tool' | 'agent' | 'plan';
+export type RunRoute = 'direct' | 'orchestrator';
 export interface PlanStep {
     id: string;
     title: string;
     tool?: string;
     status: StepStatus;
+    kind?: StepKind;
     argsSummary?: string;
     durationMs?: number;
     detail?: string;
+    agent?: string;
+    parentId?: string;
+    depth?: number;
+    startedAt?: number;
+    finishedAt?: number;
+    task?: string;
+    feedback?: string;
+    expiresAt?: number;
+    output?: JsonValue;
+}
+export interface RunPlan {
+    reasoning?: string;
+    lines: string[];
 }
 export interface CopilotUsage {
     creditsUsed?: number;
@@ -42,10 +58,14 @@ export interface CopilotRunSummary {
     tools?: string[];
     executionMs?: number;
     resultData?: CopilotResultData;
+    steps?: PlanStep[];
+    plan?: RunPlan;
 }
+export type CopilotErrorCause = 'budget' | 'tool_error' | 'provider' | 'internal';
 export interface CopilotErrorPayload {
     message: string;
     code?: string;
+    cause?: CopilotErrorCause;
     retryable?: boolean;
 }
 export interface RunStartedEvent {
@@ -54,6 +74,9 @@ export interface RunStartedEvent {
     model?: string;
     modelTier?: ModelTier;
     creditsRemaining?: number;
+    route?: RunRoute;
+    agent?: string;
+    startedAt?: number;
 }
 export interface QueuedEvent {
     type: 'queued';
@@ -62,6 +85,28 @@ export interface QueuedEvent {
 export interface PlanEvent {
     type: 'plan';
     steps: PlanStep[];
+    lines?: string[];
+    reasoning?: string;
+}
+export interface AgentStartedEvent {
+    type: 'agent_started';
+    agent: string;
+    callId: string;
+    parentId?: string;
+    task?: string;
+    feedback?: string;
+    startedAt?: number;
+}
+export interface AgentFinishedEvent {
+    type: 'agent_finished';
+    agent: string;
+    callId: string;
+    status: 'ok' | 'error';
+    durationMs?: number;
+    toolsUsed?: string[];
+    responseChars?: number;
+    chartAvailable?: boolean;
+    finishedAt?: number;
 }
 export interface StepStartedEvent {
     type: 'step_started';
@@ -97,7 +142,7 @@ export interface CancelledEvent {
     type: 'cancelled';
     reason?: string;
 }
-export type CopilotEvent = RunStartedEvent | QueuedEvent | PlanEvent | StepStartedEvent | StepResultEvent | MessageDeltaEvent | ChartEvent | UsageEvent | DoneEvent | ErrorEvent | CancelledEvent;
+export type CopilotEvent = RunStartedEvent | QueuedEvent | PlanEvent | AgentStartedEvent | AgentFinishedEvent | StepStartedEvent | StepResultEvent | MessageDeltaEvent | ChartEvent | UsageEvent | DoneEvent | ErrorEvent | CancelledEvent;
 export interface EnvelopedEvent {
     event: CopilotEvent;
     id?: string;
@@ -122,13 +167,19 @@ export interface CopilotThread {
     updatedAt: number;
     messageCount?: number;
     modelTier?: ModelTier;
+    isPinned?: boolean;
+    surface?: string;
+    createdAt?: number;
 }
 export interface RunState {
     status: RunStatus;
     turnId?: string;
     model?: string;
     modelTier?: ModelTier;
+    route?: RunRoute;
+    agent?: string;
     hasPlan: boolean;
+    plan?: RunPlan;
     steps: PlanStep[];
     queuePosition?: number;
     text: string;
@@ -139,6 +190,8 @@ export interface RunState {
     resultData?: CopilotResultData;
     error?: CopilotErrorPayload;
     lastEventId?: string;
+    startedAt?: number;
+    rebuilt?: boolean;
     offline: boolean;
 }
 export interface SendTurnInput {

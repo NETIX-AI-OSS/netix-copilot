@@ -1,8 +1,10 @@
 # netix-copilot
 
-Version 0.3.0 adds server-controlled Base 1x, High 5x, and Max 20x response tiers and a shared
-`CopilotPanel` for docked or embedded chat. Provider model identifiers are deliberately not part of
-the public package metadata.
+Version 0.4.0 is the assistant redesign: a floating dock with a launcher pill, a `min` · `dock` ·
+`full` mode machine, a grouped history rail, artifact cards, and a **reasoning trace** that shows
+the run plan, the specialist sub-agents and their tool calls as they happen. Every v0.3.0 export,
+prop and host-facing class name is preserved, and a backend that predates the new events still
+renders correctly.
 
 ```tsx
 <CopilotProvider config={{ ...config, conversationSurface: 'embed' }} adapters={adapters}>
@@ -24,13 +26,13 @@ neither SWR nor react-query, bundles no chart library, and imports no stylesheet
 ## Install
 
 ```bash
-pnpm add github:NETIX-AI-OSS/netix-copilot#v0.2.0
+pnpm add github:NETIX-AI-OSS/netix-copilot#v0.4.0
 ```
 
 ```jsonc
 // package.json
 "dependencies": {
-  "netix-copilot": "github:NETIX-AI-OSS/netix-copilot#v0.2.0"
+  "netix-copilot": "github:NETIX-AI-OSS/netix-copilot#v0.4.0"
 }
 ```
 
@@ -117,6 +119,37 @@ useEffect(() => {
 timing included — so a replayed answer renders through the same components as a live one. Use
 `engine.loadThread(id)` when you need to await it, and `state.threadLoading` while it is in flight.
 
+### Modes: `min`, `dock` and `full`
+
+`CopilotDock` boots as a launcher pill (`min`), opens into a floating card (`dock`: 430 px wide by
+default, draggable between 320 and 720, `min(680px, 86vh)` tall, a bottom sheet under 640 px), and
+can be expanded into a page the host owns (`full`). `open` is simply `mode !== 'min'`; supply
+`mode` / `onModeChange` when the host has a route for full mode, and the header grows an Expand
+button. In full mode the dock renders nothing but keeps its state — the host page composes the
+same panel with the history rail beside it:
+
+```tsx
+// App shell: the dock follows the route.
+<CopilotDock
+  mode={pathname === '/copilot' ? 'full' : mode}
+  onModeChange={(next) => (next === 'full' ? navigate('/copilot') : setMode(next))}
+/>
+
+// /copilot page
+<div style={{ display: 'grid', gridTemplateColumns: '290px minmax(0, 1fr)' }}>
+  <HistoryRail />
+  <CopilotPanel layout='full' />
+</div>
+```
+
+In the dock, conversations live in a header popover (`ThreadsPopover`, rendered by `CopilotPanel`
+when `showThreads` is on). `HistoryRail` groups threads into Pinned · Today · Yesterday · This week
+· Earlier, searches titles client-side, and its kebab offers Pin, Rename and Delete, which go to
+`PATCH` / `DELETE /api/copilot-conversation/{id}/` through `engine.updateThread(id, { title |
+isPinned })` and `engine.deleteThread(id)`. `useCopilotThreadActions()` returns the same three
+actions bound to the engine, with the optimistic list edit reverted when the backend refuses.
+`ThreadList` remains as a thin wrapper over the rail.
+
 ### Scoping a prompt without showing the scope
 
 Neither wire contract has a scope field — `CopilotAskSerializer` reads `prompt`, `thread_id` and
@@ -134,6 +167,11 @@ adapters={{
 The backend receives the transformed text; the transcript keeps what the user typed. Return
 `{ wire, display }` instead of a string to change both. `engine.send(prompt, scope, { wireText })`
 is the same split one level down, and `CopilotTurnView.wirePrompt` records the difference.
+
+The composer shows a page-context chip (`@{entity.label ?? state.module}`) that the user can switch
+off for a send. The flag reaches the transform as `context.includeContext` — `false` when the chip
+is off, absent otherwise, so a transform written before the chip existed keeps its behaviour — and
+`engine.setContextEnabled(bool)` drives it programmatically.
 
 ## Which backend it talks to
 
@@ -190,8 +228,17 @@ entries become `step_result`, `chart_config` becomes `chart`, and the integer `s
 
 ### Event vocabulary
 
-`run_started` · `queued` · `plan` · `step_started` · `step_result` · `message_delta` · `chart` ·
-`usage` · `done` · `error` · `cancelled`
+`run_started` · `queued` · `plan` · `agent_started` · `agent_finished` · `step_started` ·
+`step_result` · `message_delta` · `chart` · `usage` · `done` · `error` · `cancelled`
+
+`agent_started` and `agent_finished` are the v0.4.0 additions, together with a handful of fields on
+existing events: `route` and `agent` on `run_started`; `agent`, `parent_call_id`, `depth`,
+`started_at`, `finished_at` on steps; `task` and `feedback` on the agent events; `expires_at` on an
+approval; `code` on `error`. All of it is additive. A backend that sends none of it still works:
+the decoder ignores unknown fields, the trace draws the flat stream, and the terminal read-back
+re-parents the rows from each `call_*_agent` entry's `sub_execution_log`, so the finished and the
+replayed trace are the same tree either way. `RunState.rebuilt` is set when that read-back
+introduced lineage the stream never carried.
 
 `plan` is **optional**. ml-engine's direct router answers single-domain prompts without ever
 consulting the orchestrator, so a perfectly healthy run may never emit one. Nothing blocks on it;
@@ -212,6 +259,29 @@ event back for one read of `GET /api/copilot-turn/{turnId}/` and merges in what 
 carry. The frame wins on every key it did send, a failed read still finishes the run, and exactly
 one terminal event is emitted, already complete — so a live run shows its tools badge and its result
 table with the answer, and nothing above the transport ever clears the panel to get them.
+
+### The reasoning trace
+
+`ReasoningTrace` is a collapsible card between the prompt and the answer, and it narrates the run
+from real events only. Its header follows the run: thinking dots before the first event (or the
+queue position), "Planning" once a `plan` arrives, "Reasoning — step k of n" with a live elapsed
+counter while steps run, "Waiting for your approval" when a step is `awaiting_approval`, then a
+tick and "Reasoned for 12.4 s · 7 steps · 2 specialists" on `done` (it auto-collapses 600 ms
+later), or a cross and "Stopped after 3 steps" on error or cancel. A replayed thread shows the
+collapsed summary and expands on demand.
+
+The body renders the model's `reasoning` and plan lines, one **agent card** per `call_*_agent` step
+— domain stripe, specialist name, the task the orchestrator gave it, status, elapsed, and its
+nested tool rows; two cards in the same round sit side by side above 560 px — and **tool rows**
+with a status glyph, a humanised label (`labels.tools[name]`, then `copilot.tool.<name>`, then the
+sentence-cased name), the argument summary, and the duration. Rows with detail expand to show it,
+with a raw-output toggle on a turn rebuilt from history. Nothing is invented: no synthetic timings,
+no reasoning text the backend did not send.
+
+The card is `role="group"`, the header a `<button aria-expanded>`, status changes are announced
+through an `aria-live="polite"` region at most once a second, and every glyph carries a hidden
+status label. Rings and dots stop under `prefers-reduced-motion`. `PlanTimeline` and `RunBadges`
+remain exported as the legacy flat views.
 
 ### Approvals
 
@@ -240,6 +310,34 @@ Everything that differs between applications is injected. Everything that does n
 | `renderMarkdown`       | optional                    | Override the built-in renderer. Omit it and the SDK uses its own streaming-tolerant one, which keeps `react-markdown` out of the dependency tree.                   |
 | `transformPrompt`      | optional                    | Last chance to change what goes on the wire. The transcript keeps what the user typed, so a host scope hint never appears in the user's own chat bubble.            |
 | `onNavigate`, `logger` | optional                    | Deep links and diagnostics.                                                                                                                                         |
+| `notify`               | optional                    | Route the SDK's small confirmations (copied, exported, deleted) through the host's toaster. Without it the SDK shows its own bottom-centre `ToastHost` pill.        |
+| `labels`               | optional                    | `{ tools?, agents? }` name overrides keyed by the raw ml-engine name, ahead of the `copilot.tool.*` / `copilot.agent.*` keys and the sentence-cased fallback.       |
+| `quickPrompts`         | optional                    | Starter chips for an empty conversation when the host does not pass them per panel.                                                                                 |
+
+`transformPrompt` receives `includeContext` in its context (see above), and `useNotify()` gives a
+host-rendered turn the same notifier the SDK uses.
+
+### Theme tokens
+
+Every token below has a light default on `.nxcp-root`; a host sets what it has through
+`adapters.theme`. `surfaceMuted` and `shadow` are the v0.3 names for `surface2` and `elev3` and
+still apply.
+
+| Token                                                      | CSS variable                       | Used for                                              |
+| ---------------------------------------------------------- | ---------------------------------- | ----------------------------------------------------- |
+| `surface`, `surface2`, `surface3`                          | `--nxcp-surface(-2/-3)`            | the card, then the trace card / composer box, chips   |
+| `border`, `borderStrong`                                   | `--nxcp-border(-strong)`           | dividers; composer, popover and chip outlines         |
+| `text`, `textMuted`, `textTertiary`                        | `--nxcp-text(-muted/-tertiary)`    | body, secondary copy, timestamps and durations        |
+| `accent`, `accentText`, `accentSubtle`                     | `--nxcp-accent(-text/-subtle)`     | brand fills, text on brand, the NETIX.AI lane         |
+| `domainCafm`                                               | `--nxcp-domain-cafm`               | the CAFM AI lane on agent cards                       |
+| `danger`, `success`, `warning`                             | `--nxcp-danger/-success/-warning`  | status glyphs, chips and banners                      |
+| `radius`, `radiusSm`, `radiusMd`, `radiusLg`, `radiusPill` | `--nxcp-radius(-sm/-md/-lg/-pill)` | card, controls, rows, cards, chips                    |
+| `elev1`, `elev2`, `elev3`                                  | `--nxcp-elev-1/2/3`                | elevation scale (dark hosts pass inset borders)       |
+| `focusRing`                                                | `--nxcp-focus-ring`                | keyboard focus                                        |
+| `motionFast`, `motionBase`                                 | `--nxcp-motion-fast/-base`         | transitions; all animation stops under reduced motion |
+| `fontFamily`, `monoFontFamily`                             | `--nxcp-font`, `--nxcp-mono`       | body and the mono durations / argument summaries      |
+
+The stylesheet uses logical properties only, so an RTL host renders correctly without overrides.
 
 There is deliberately **no data-layer adapter**. The SDK owns its own `fetch`, so it behaves
 identically in viz-ui (SWR) and cafm-v2-ui (react-query).
@@ -306,10 +404,10 @@ The build output is committed, so a release is: build, commit, tag, push.
 pnpm install --config.minimumReleaseAge=1440
 pnpm lint && pnpm format:check && pnpm test && pnpm build
 git add -A dist
-git commit -m "release: v0.3.0"
-git tag v0.3.0          # lightweight. NEVER -a, NEVER -s
+git commit -m "release: v0.4.0"
+git tag v0.4.0          # lightweight. NEVER -a, NEVER -s
 git push origin main
-git push origin v0.3.0
+git push origin v0.4.0
 ```
 
 ### Tags must be lightweight
@@ -326,7 +424,7 @@ v1.4.0 are lightweight because of it.
 Check before pushing — the answer must be `commit`, not `tag`:
 
 ```bash
-git cat-file -t v0.3.0
+git cat-file -t v0.4.0
 ```
 
 Because pnpm pins a resolved SHA, a tag must also be treated as immutable. Moving one strands

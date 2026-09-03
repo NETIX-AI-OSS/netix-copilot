@@ -29,9 +29,36 @@ function upsertStep(steps, incoming) {
 function mergeUsage(current, incoming) {
     return { ...current, ...incoming };
 }
+// The meta-tool's own step_started usually lands first, so this upserts onto it: the tool name
+// stays, the orchestrator's task becomes the title, and the card opens as running.
+function agentStartedStep(event) {
+    return {
+        id: event.callId,
+        title: event.task ?? event.agent,
+        status: 'running',
+        kind: 'agent',
+        agent: event.agent,
+        ...(event.task === undefined ? {} : { task: event.task }),
+        ...(event.feedback === undefined ? {} : { feedback: event.feedback }),
+        ...(event.parentId === undefined ? {} : { parentId: event.parentId }),
+        ...(event.startedAt === undefined ? {} : { startedAt: event.startedAt }),
+    };
+}
+// Closes the card agent_started opened; the task stays the title, the outcome and timing land.
+function agentFinishedStep(event, current) {
+    return {
+        id: event.callId,
+        title: current?.title ?? event.agent,
+        status: event.status,
+        kind: 'agent',
+        agent: event.agent,
+        ...(event.durationMs === undefined ? {} : { durationMs: event.durationMs }),
+        ...(event.finishedAt === undefined ? {} : { finishedAt: event.finishedAt }),
+    };
+}
 // Only the keys the terminal payload actually carried, so a summary that omits execution_time
 // does not blank one an earlier event already recorded.
-function applySummary(summary) {
+function applySummary(state, summary) {
     const patch = {};
     if (summary.tools !== undefined)
         patch.tools = summary.tools;
@@ -39,6 +66,21 @@ function applySummary(summary) {
         patch.executionMs = summary.executionMs;
     if (summary.resultData !== undefined)
         patch.resultData = summary.resultData;
+    if (summary.steps !== undefined) {
+        // Stored history knows lineage the stream may not have carried. A step the stream never saw,
+        // or a parent it never named, means the trace is being rebuilt rather than confirmed.
+        const rebuilt = summary.steps.some((step) => {
+            const seen = state.steps.find((entry) => entry.id === step.id);
+            return seen === undefined || (step.parentId !== undefined && seen.parentId === undefined);
+        });
+        patch.steps = summary.steps.reduce(upsertStep, state.steps);
+        if (rebuilt)
+            patch.rebuilt = true;
+    }
+    if (summary.plan !== undefined) {
+        patch.plan = state.plan ?? summary.plan;
+        patch.hasPlan = true;
+    }
     return patch;
 }
 function applyEvent(state, event) {
@@ -52,6 +94,12 @@ function applyEvent(state, event) {
             if (event.creditsRemaining !== undefined) {
                 next.usage = mergeUsage(state.usage, { creditsRemaining: event.creditsRemaining });
             }
+            if (event.route !== undefined)
+                next.route = event.route;
+            if (event.agent !== undefined)
+                next.agent = event.agent;
+            if (event.startedAt !== undefined)
+                next.startedAt = event.startedAt;
             return next;
         }
         case 'queued': {
@@ -60,15 +108,34 @@ function applyEvent(state, event) {
                 next.queuePosition = event.position;
             return next;
         }
-        case 'plan':
+        case 'plan': {
             // A run without a plan is normal: the direct router answers single-domain prompts without
             // ever consulting the orchestrator. Nothing may wait on this event.
-            return {
+            const next = {
                 ...state,
                 hasPlan: true,
                 status: state.status === 'queued' ? 'streaming' : state.status,
                 steps: event.steps.reduce(upsertStep, state.steps),
             };
+            if (event.lines !== undefined || event.reasoning !== undefined) {
+                const reasoning = event.reasoning ?? state.plan?.reasoning;
+                next.plan = {
+                    ...(reasoning === undefined ? {} : { reasoning }),
+                    lines: event.lines ?? state.plan?.lines ?? [],
+                };
+            }
+            return next;
+        }
+        case 'agent_started':
+            return {
+                ...state,
+                status: state.status === 'queued' ? 'streaming' : state.status,
+                steps: upsertStep(state.steps, agentStartedStep(event)),
+            };
+        case 'agent_finished': {
+            const current = state.steps.find((step) => step.id === event.callId);
+            return { ...state, steps: upsertStep(state.steps, agentFinishedStep(event, current)) };
+        }
         case 'step_started':
         case 'step_result':
             return {
@@ -92,11 +159,11 @@ function applyEvent(state, event) {
         case 'usage':
             return { ...state, usage: mergeUsage(state.usage, event.usage) };
         case 'done':
-            return { ...state, ...applySummary(event), status: 'done', offline: false };
+            return { ...state, ...applySummary(state, event), status: 'done', offline: false };
         case 'error':
             return {
                 ...state,
-                ...applySummary(event),
+                ...applySummary(state, event),
                 status: 'error',
                 error: event.error,
                 offline: false,

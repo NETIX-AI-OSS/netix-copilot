@@ -14,10 +14,14 @@ function modelTierMetadata(tier) {
 }
 // Every event name the backend can emit. `plan` is optional in the sense that a run may
 // never emit it -- the direct router bypasses the orchestrator -- so nothing may block on it.
+// `agent_started` / `agent_finished` arrive only from an ml-engine that tags specialist runs;
+// an older backend never sends them and the trace still renders from the step events alone.
 exports.COPILOT_EVENT_NAMES = [
     'run_started',
     'queued',
     'plan',
+    'agent_started',
+    'agent_finished',
     'step_started',
     'step_result',
     'message_delta',

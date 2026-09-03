@@ -82,6 +82,20 @@ class AutoTransport {
             throw error;
         }
     }
+    // Thread housekeeping only the copilot contract serves. A transport without it throws the same
+    // missing-route error the route itself would, so the engine reverts its optimistic list edit.
+    updateThread(threadId, patch, signal) {
+        const target = this.resolved ?? this.streaming;
+        if (!target.updateThread)
+            return Promise.reject(notServed('update'));
+        return target.updateThread(threadId, patch, signal);
+    }
+    deleteThread(threadId, signal) {
+        const target = this.resolved ?? this.streaming;
+        if (!target.deleteThread)
+            return Promise.reject(notServed('delete'));
+        return target.deleteThread(threadId, signal);
+    }
     // One request's failure is never proof that a contract is absent. ml-engine 404s a create that
     // names a thread the caller does not own, and reading that as "streaming is not deployed" pinned
     // the tab to polling for good over a stale bookmark. So a missing-route answer is corroborated
@@ -101,3 +115,6 @@ class AutoTransport {
     }
 }
 exports.AutoTransport = AutoTransport;
+function notServed(action) {
+    return new http_1.CopilotHttpError(501, '', `netix-copilot: the selected transport cannot ${action} a conversation.`);
+}

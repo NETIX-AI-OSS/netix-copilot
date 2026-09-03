@@ -74,14 +74,6 @@ export function MessageView({
           ) : null}
         </div>
 
-        {run.status === 'queued' ? (
-          <p className='nxcp-empty'>
-            {run.queuePosition === undefined
-              ? t('copilot.status.queued')
-              : t('copilot.status.queuedAt', { position: run.queuePosition })}
-          </p>
-        ) : null}
-
         <ReasoningTrace run={run} defaultOpen={streaming} />
 
         {run.text !== '' ? (

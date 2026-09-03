@@ -35,3 +35,10 @@ export interface CopilotModelTierState {
 export declare function useCopilotModelTier(): CopilotModelTierState;
 export declare function useCopilotEnabled(): boolean;
 export declare function useCopilotSend(): (prompt: string) => void;
+export interface CopilotThreadActions {
+    rename: (threadId: string, title: string) => Promise<void>;
+    pin: (threadId: string, on: boolean) => Promise<void>;
+    remove: (threadId: string) => Promise<void>;
+}
+export declare function useCopilotThreadActions(): CopilotThreadActions;
+export declare function useCopilotRegenerate(): (turnId: string) => void;

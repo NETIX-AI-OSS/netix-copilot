@@ -65,6 +65,7 @@ class CopilotEngine {
             threadLoading: false,
             modelTier: 'base',
             modelTierLocked: false,
+            contextEnabled: true,
         };
         this.unsubscribeOnline = onlineSource.subscribe((online) => this.handleConnectivity(online));
     }
@@ -234,6 +235,49 @@ class CopilotEngine {
             return;
         this.update({ modelTier: tier });
     }
+    setContextEnabled(enabled) {
+        if (this.snapshot.contextEnabled === enabled)
+            return;
+        this.update({ contextEnabled: enabled });
+    }
+    // Rename or pin a stored thread. The list updates first so the rail answers immediately, and
+    // is put back if the backend refuses.
+    async updateThread(threadId, patch) {
+        const update = this.options.transport.updateThread;
+        if (update === undefined)
+            return;
+        const previous = this.snapshot.threads;
+        this.update({
+            threads: previous.map((thread) => thread.id === threadId
+                ? {
+                    ...thread,
+                    ...(patch.title === undefined ? {} : { title: patch.title }),
+                    ...(patch.isPinned === undefined ? {} : { isPinned: patch.isPinned }),
+                }
+                : thread),
+        });
+        try {
+            const saved = await update.call(this.options.transport, threadId, patch);
+            this.update({
+                threads: this.snapshot.threads.map((thread) => (thread.id === threadId ? saved : thread)),
+            });
+        }
+        catch (error) {
+            this.options.logger?.warn('netix-copilot: thread update failed', error);
+            this.update({ threads: previous });
+            throw error;
+        }
+    }
+    // Delete a stored thread. Deleting the open one empties the panel, exactly like New.
+    async deleteThread(threadId) {
+        const remove = this.options.transport.deleteThread;
+        if (remove === undefined)
+            return;
+        await remove.call(this.options.transport, threadId);
+        if (this.snapshot.threadId === threadId)
+            this.startNewThread();
+        this.update({ threads: this.snapshot.threads.filter((thread) => thread.id !== threadId) });
+    }
     dispose() {
         if (this.disposed)
             return;
@@ -333,7 +377,12 @@ class CopilotEngine {
         const current = turns[index];
         if (!current)
             return;
-        const nextRun = (0, run_store_1.applyEnveloped)(current.run, enveloped);
+        // An older backend stamps no start time on run_started; the elapsed counter still needs one.
+        const event = enveloped.event;
+        const stamped = event.type === 'run_started' && event.startedAt === undefined
+            ? { ...enveloped, event: { ...event, startedAt: this.now() } }
+            : enveloped;
+        const nextRun = (0, run_store_1.applyEnveloped)(current.run, stamped);
         if (nextRun === current.run)
             return;
         const nextTurns = turns.slice();

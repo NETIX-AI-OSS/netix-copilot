@@ -225,6 +225,8 @@ describe('history replay', () => {
     const transport = new QuietTransport()
     transport.hold = true
     mount(<CopilotDock open />, transport)
+    // Threads live in the header popover now, not in a strip inside the dock.
+    fireEvent.click(screen.getByRole('button', { name: 'Conversations' }))
     fireEvent.click(await screen.findByText('Earlier question'))
     expect(screen.getByText('Restoring this conversation…')).toBeTruthy()
   })

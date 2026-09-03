@@ -121,9 +121,10 @@ describe('meta row', () => {
     expect(screen.getByText('Cancelled.').getAttribute('data-tone')).toBe('warning')
   })
 
-  it('says where the run is in the queue', () => {
+  it('leaves the queue position to the trace header', () => {
     mount(<MessageView turn={turn({ status: 'queued', queuePosition: 2 })} />)
-    expect(screen.getByText('Queued at position 2.')).toBeTruthy()
+    expect(screen.getByTestId('trace').dataset.status).toBe('queued')
+    expect(screen.queryByText('Queued at position 2.')).toBeNull()
   })
 })
 
