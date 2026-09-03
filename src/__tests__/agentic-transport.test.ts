@@ -403,6 +403,87 @@ describe('AgenticTransport run summary', () => {
   })
 })
 
+// Polling reads the same stored columns the read-back does, so it nests the same way.
+describe('AgenticTransport reasoning trace', () => {
+  const ORCHESTRATED = {
+    status: AGENTIC_STATUS.COMPLETED,
+    plan: [
+      { tool: 'make_plan', call_id: 'p0', status: 'completed' },
+      {
+        tool: 'call_facilities_agent',
+        call_id: 'a1',
+        status: 'completed',
+        arguments: { task: 'Read AHU-01' },
+      },
+    ],
+    execution_log: [
+      {
+        tool: 'make_plan',
+        call_id: 'p0',
+        output: { steps: ['Read AHU-01'], reasoning: 'One domain.' },
+      },
+      {
+        tool: 'call_facilities_agent',
+        call_id: 'a1',
+        arguments: { task: 'Read AHU-01' },
+        output: {
+          specialist: 'FacilitiesAgent',
+          response: 'ok',
+          sub_execution_log: [{ tool: 'realtime_data_retrieve', call_id: 's1', status: 'ok' }],
+        },
+      },
+    ],
+  }
+
+  it("nests a specialist's calls beneath its call_*_agent entry", async () => {
+    const { transport } = transportWith([jsonResponse(ORCHESTRATED)])
+    const steps = (await collect(transport))
+      .filter((entry) => entry.event.type === 'step_result')
+      .map((entry) => (entry.event.type === 'step_result' ? entry.event.step : undefined))
+    expect(steps.map((step) => [step?.id, step?.parentId])).toEqual([
+      ['a1', undefined],
+      ['s1', 'a1'],
+    ])
+    expect(steps[0]).toMatchObject({ kind: 'agent', agent: 'FacilitiesAgent', task: 'Read AHU-01' })
+    expect(steps[1]).toMatchObject({ kind: 'tool', agent: 'FacilitiesAgent', depth: 1 })
+  })
+
+  it('turns the make_plan entry into plan lines rather than a step', async () => {
+    const { transport } = transportWith([jsonResponse(ORCHESTRATED)])
+    const events = await collect(transport)
+    const plans = events.filter((entry) => entry.event.type === 'plan')
+    expect(plans.map((entry) => entry.event)).toEqual([
+      { type: 'plan', steps: [expect.objectContaining({ id: 'a1', kind: 'agent' })] },
+      { type: 'plan', steps: [], lines: ['Read AHU-01'], reasoning: 'One domain.' },
+    ])
+    expect(
+      events.some(
+        (entry) => entry.event.type === 'step_result' && entry.event.step.tool === 'make_plan',
+      ),
+    ).toBe(false)
+    const done = events.find((entry) => entry.event.type === 'done')
+    expect(done?.event).toMatchObject({ plan: { lines: ['Read AHU-01'] } })
+    expect(done?.event.type === 'done' ? done.event.steps?.map((step) => step.id) : []).toEqual([
+      'a1',
+      's1',
+    ])
+  })
+
+  it('shows a plan of free strings as lines and never as pending steps', async () => {
+    const { transport } = transportWith([
+      jsonResponse({ status: AGENTIC_STATUS.COMPLETED, plan: ['Look it up', 'Answer'] }),
+    ])
+    const plan = (await collect(transport)).find((entry) => entry.event.type === 'plan')
+    expect(plan?.event).toEqual({ type: 'plan', steps: [], lines: ['Look it up', 'Answer'] })
+  })
+
+  it('serves no thread housekeeping, since the request resource has no thread store', () => {
+    const { transport } = transportWith([])
+    expect(transport.updateThread).toBeUndefined()
+    expect(transport.deleteThread).toBeUndefined()
+  })
+})
+
 describe('AgenticTransport.fetchThread', () => {
   it('rebuilds a stored request into replayable turns', async () => {
     const { transport, fetchImpl } = transportWith([

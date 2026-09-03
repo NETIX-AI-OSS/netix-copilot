@@ -466,7 +466,13 @@ export class CopilotEngine {
     const index = turns.length - 1
     const current = turns[index]
     if (!current) return
-    const nextRun = applyEnveloped(current.run, enveloped)
+    // An older backend stamps no start time on run_started; the elapsed counter still needs one.
+    const event = enveloped.event
+    const stamped: EnvelopedEvent =
+      event.type === 'run_started' && event.startedAt === undefined
+        ? { ...enveloped, event: { ...event, startedAt: this.now() } }
+        : enveloped
+    const nextRun = applyEnveloped(current.run, stamped)
     if (nextRun === current.run) return
     const nextTurns = turns.slice()
     nextTurns[index] = { ...current, run: nextRun }

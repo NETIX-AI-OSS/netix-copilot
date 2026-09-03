@@ -4,8 +4,16 @@
 
 import { describe, expect, it } from 'vitest'
 
+import { buildTraceTree } from '../runtime/trace-model'
 import type { CopilotRunRow } from '../transport/transcript'
-import { mapUsage, mergeSteps, transcriptFromRequest, turnFromRow } from '../transport/transcript'
+import {
+  mapUsage,
+  mergeSteps,
+  readRunSummary,
+  rebuildRun,
+  transcriptFromRequest,
+  turnFromRow,
+} from '../transport/transcript'
 
 const REQUEST_ROW: CopilotRunRow = {
   id: 101,
@@ -209,6 +217,252 @@ describe('mergeSteps', () => {
       { id: 'c1', title: 'sql_query', status: 'ok' },
     ])
     expect(merged).toEqual([{ id: 'c1', title: 'sql_query', status: 'ok', tool: 'sql_query' }])
+  })
+})
+
+// A stored orchestrated run, as ml-engine persists it: plan_trace on `plan` (flat, orchestrator
+// level, make_plan included), execution_log with the make_plan output and one call_*_agent entry
+// per specialist, each carrying its sub_execution_log under the same call_ids the stream used.
+const ORCHESTRATED_ROW: CopilotRunRow = {
+  id: 44,
+  status: 1,
+  prompt_text: 'Summarise AHU-01 and its open work orders',
+  response_text: 'AHU-01 is healthy; two work orders are open.',
+  created_on: '2026-09-01T08:00:00Z',
+  plan: [
+    {
+      tool: 'make_plan',
+      call_id: 'p0',
+      iteration: 0,
+      status: 'completed',
+      arguments: { steps: ['Read live values for AHU-01'], reasoning: 'Two domains are involved.' },
+      duration_ms: 12,
+      started_at: 1000,
+      finished_at: 1012,
+    },
+    {
+      tool: 'call_facilities_agent',
+      call_id: 'a1',
+      iteration: 0,
+      status: 'completed',
+      arguments: { task: 'Read live values and active alarms for AHU-01' },
+      duration_ms: 3200,
+      started_at: 1000,
+      finished_at: 4200,
+    },
+    {
+      tool: 'call_work_orders_agent',
+      call_id: 'a2',
+      iteration: 0,
+      status: 'completed',
+      arguments: { task: 'List open work orders for AHU-01', feedback: 'Include PPM' },
+    },
+  ],
+  execution_log: [
+    {
+      tool: 'make_plan',
+      call_id: 'p0',
+      iteration: 0,
+      arguments: { steps: ['Read live values for AHU-01'], reasoning: 'Two domains are involved.' },
+      output: {
+        steps: ['Read live values for AHU-01', 'List its open work orders', 'Summarise both'],
+        reasoning: 'Two domains are involved.',
+      },
+    },
+    {
+      tool: 'call_facilities_agent',
+      call_id: 'a1',
+      iteration: 0,
+      arguments: { task: 'Read live values and active alarms for AHU-01' },
+      output: {
+        specialist: 'FacilitiesAgent',
+        response: 'Supply air is 18.2 C with no active alarms.',
+        tools_used: ['realtime_data_retrieve', 'alarm_log_list'],
+        chart_config: null,
+        sub_execution_log: [
+          {
+            tool: 'realtime_data_retrieve',
+            call_id: 's1',
+            iteration: 0,
+            status: 'ok',
+            arguments: { tag_ids: [1, 2] },
+            output: { values: [18.2] },
+            duration_ms: 210,
+            started_at: 1100,
+            finished_at: 1310,
+          },
+          {
+            tool: 'alarm_log_list',
+            call_id: 's2',
+            iteration: 1,
+            status: 'error',
+            output: { error: 'upstream 502' },
+          },
+        ],
+      },
+    },
+    {
+      tool: 'call_work_orders_agent',
+      call_id: 'a2',
+      iteration: 0,
+      arguments: { task: 'List open work orders for AHU-01', feedback: 'Include PPM' },
+      output: {
+        specialist: 'WorkOrdersAgent',
+        response: '',
+        tools_used: ['reactive_work_order_list'],
+        chart_config: null,
+        sub_execution_log: [{ tool: 'reactive_work_order_list', iteration: 0, status: 'ok' }],
+      },
+    },
+  ],
+  tools: ['call_facilities_agent', 'call_work_orders_agent', 'realtime_data_retrieve'],
+  execution_time: 6.5,
+}
+
+describe('rebuildRun', () => {
+  const rebuilt = rebuildRun(ORCHESTRATED_ROW)
+
+  it('turns the make_plan entry into the plan as the model wrote it, not a step', () => {
+    expect(rebuilt.plan).toEqual({
+      reasoning: 'Two domains are involved.',
+      lines: ['Read live values for AHU-01', 'List its open work orders', 'Summarise both'],
+    })
+    expect(rebuilt.steps.some((step) => step.tool === 'make_plan')).toBe(false)
+  })
+
+  it('names the specialist and its task on each call_*_agent step', () => {
+    const facilities = rebuilt.steps.find((step) => step.id === 'a1')
+    expect(facilities).toMatchObject({
+      kind: 'agent',
+      agent: 'FacilitiesAgent',
+      task: 'Read live values and active alarms for AHU-01',
+      title: 'Read live values and active alarms for AHU-01',
+      status: 'ok',
+      durationMs: 3200,
+      startedAt: 1000,
+      finishedAt: 4200,
+    })
+    const workOrders = rebuilt.steps.find((step) => step.id === 'a2')
+    expect(workOrders).toMatchObject({
+      kind: 'agent',
+      agent: 'WorkOrdersAgent',
+      feedback: 'Include PPM',
+      status: 'ok',
+    })
+  })
+
+  // A specialist that died is stored the way base.py stores any failed tool: the trace entry says
+  // errored with the message as detail, and the log output carries `error`. Both must agree.
+  it('keeps a failed specialist failed, with the stored detail', () => {
+    const failed = rebuildRun({
+      plan: [
+        {
+          tool: 'call_work_orders_agent',
+          call_id: 'a2',
+          status: 'errored',
+          detail: 'CAFM timed out',
+          arguments: { task: 'List open work orders' },
+        },
+      ],
+      execution_log: [
+        {
+          tool: 'call_work_orders_agent',
+          call_id: 'a2',
+          arguments: { task: 'List open work orders' },
+          output: { error: 'CAFM timed out' },
+        },
+      ],
+    })
+    expect(failed.steps).toHaveLength(1)
+    expect(failed.steps[0]).toMatchObject({
+      kind: 'agent',
+      status: 'error',
+      detail: 'CAFM timed out',
+      task: 'List open work orders',
+      output: { error: 'CAFM timed out' },
+    })
+    expect(failed.steps[0]?.agent).toBeUndefined()
+  })
+
+  it('nests every sub_execution_log entry under its agent with the stored output', () => {
+    const tree = buildTraceTree(rebuilt.steps)
+    expect(tree.map((node) => node.step.id)).toEqual(['a1', 'a2'])
+    expect(tree[0]?.children.map((node) => node.step.id)).toEqual(['s1', 's2'])
+    expect(tree[0]?.children[0]?.step).toEqual({
+      id: 's1',
+      title: 'realtime_data_retrieve',
+      tool: 'realtime_data_retrieve',
+      status: 'ok',
+      kind: 'tool',
+      agent: 'FacilitiesAgent',
+      parentId: 'a1',
+      depth: 1,
+      argsSummary: 'tag_ids=[2]',
+      output: { values: [18.2] },
+      durationMs: 210,
+      startedAt: 1100,
+      finishedAt: 1310,
+    })
+    expect(tree[0]?.children[1]?.step).toMatchObject({
+      status: 'error',
+      output: { error: 'upstream 502' },
+    })
+  })
+
+  it('derives an id from the parent for a child an older backend stored without one', () => {
+    const tree = buildTraceTree(rebuilt.steps)
+    expect(tree[1]?.children.map((node) => node.step.id)).toEqual(['a2-0'])
+    expect(tree[1]?.children[0]?.step).toMatchObject({
+      tool: 'reactive_work_order_list',
+      parentId: 'a2',
+      agent: 'WorkOrdersAgent',
+      status: 'ok',
+    })
+  })
+
+  it('shows a plan stored as free strings as lines and never as pending steps', () => {
+    expect(rebuildRun({ plan: ['Look it up', 'Answer'] })).toEqual({
+      steps: [],
+      plan: { lines: ['Look it up', 'Answer'] },
+    })
+  })
+
+  it('keeps a direct-routed run as one agent card with nothing beneath it', () => {
+    const direct = rebuildRun({
+      plan: [
+        {
+          tool: 'call_facilities_agent',
+          call_id: 'direct-facilities-9',
+          iteration: 0,
+          status: 'completed',
+          detail: 'deterministic single-domain route',
+        },
+      ],
+      execution_log: [
+        { tool: 'realtime_data_retrieve', call_id: 'c1', arguments: { tag_ids: [1] }, output: {} },
+      ],
+    })
+    expect(direct.plan).toBeUndefined()
+    expect(direct.steps.map((step) => [step.id, step.kind])).toEqual([
+      ['direct-facilities-9', 'agent'],
+      ['c1', 'tool'],
+    ])
+  })
+
+  it('rebuilds identically whichever row grouping is read', () => {
+    expect(turnFromRow(ORCHESTRATED_ROW, '7', 0).run.steps).toEqual(rebuilt.steps)
+    expect(transcriptFromRequest(ORCHESTRATED_ROW, '44')[0]?.run.steps).toEqual(rebuilt.steps)
+    expect(turnFromRow(ORCHESTRATED_ROW, '7', 0).run).toMatchObject({
+      hasPlan: true,
+      plan: rebuilt.plan,
+    })
+  })
+
+  it('rides on the run summary so a live run nests when it ends', () => {
+    const summary = readRunSummary(ORCHESTRATED_ROW)
+    expect(summary.steps).toEqual(rebuilt.steps)
+    expect(summary.plan).toEqual(rebuilt.plan)
+    expect(readRunSummary({ id: 1 }).steps).toBeUndefined()
   })
 })
 

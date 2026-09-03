@@ -316,6 +316,197 @@ describe('decodeFrame', () => {
   })
 })
 
+// The reasoning trace. ml-engine's plan is free text with no ids, and a newer ml-engine tags every
+// step with the specialist that made it and opens and closes each specialist with its own events.
+describe('decodeFrame reasoning trace fields', () => {
+  beforeEach(() => {
+    resetSyntheticStepCounter()
+  })
+
+  it('keeps plan strings as lines and never turns them into pending steps', () => {
+    const out = decodeFrame(
+      frame('plan', {
+        steps: ['Read live values for AHU-01', 'List its open work orders'],
+        reasoning: 'Two domains are involved.',
+      }),
+    )
+    expect(out?.event).toEqual({
+      type: 'plan',
+      steps: [],
+      lines: ['Read live values for AHU-01', 'List its open work orders'],
+      reasoning: 'Two domains are involved.',
+    })
+  })
+
+  it('still decodes keyed plan entries as steps alongside free lines', () => {
+    const out = decodeFrame(
+      frame('plan', { steps: [{ id: 's1', title: 'Look up asset' }, 'and then summarise'] }),
+    )
+    expect(out?.event).toEqual({
+      type: 'plan',
+      steps: [{ id: 's1', title: 'Look up asset', status: 'pending' }],
+      lines: ['and then summarise'],
+    })
+  })
+
+  it('decodes the route, the answering agent and the start time off run_started', () => {
+    const out = decodeFrame(
+      frame('run_started', {
+        turn_id: 't1',
+        route: 'direct',
+        agent: 'FacilitiesAgent',
+        started_at: 1725000000000,
+      }),
+    )
+    expect(out?.event).toEqual({
+      type: 'run_started',
+      turnId: 't1',
+      route: 'direct',
+      agent: 'FacilitiesAgent',
+      startedAt: 1725000000000,
+    })
+  })
+
+  it('drops a route outside the two ml-engine takes', () => {
+    const out = decodeFrame(frame('run_started', { turn_id: 't1', route: 'magic' }))
+    expect(out?.event).toEqual({ type: 'run_started', turnId: 't1' })
+  })
+
+  it('decodes agent_started with snake_case keys', () => {
+    const out = decodeFrame(
+      frame('agent_started', {
+        agent: 'FacilitiesAgent',
+        call_id: 'c1',
+        parent_call_id: 'c0',
+        task: 'Read live values for AHU-01',
+        feedback: 'Include alarms',
+        started_at: 1000,
+      }),
+    )
+    expect(out?.event).toEqual({
+      type: 'agent_started',
+      agent: 'FacilitiesAgent',
+      callId: 'c1',
+      parentId: 'c0',
+      task: 'Read live values for AHU-01',
+      feedback: 'Include alarms',
+      startedAt: 1000,
+    })
+  })
+
+  it('decodes agent_started with camelCase keys too', () => {
+    const out = decodeFrame(
+      frame('agent_started', { agent: 'AssetAgent', callId: 'c2', task: 'List', startedAt: 5 }),
+    )
+    expect(out?.event).toEqual({
+      type: 'agent_started',
+      agent: 'AssetAgent',
+      callId: 'c2',
+      task: 'List',
+      startedAt: 5,
+    })
+  })
+
+  it('drops an agent lifecycle event without an agent or a call id', () => {
+    expect(decodeFrame(frame('agent_started', { call_id: 'c1' }))).toBeNull()
+    expect(decodeFrame(frame('agent_finished', { agent: 'AssetAgent' }))).toBeNull()
+  })
+
+  it('decodes agent_finished, mapping completed to ok and errored to error', () => {
+    const out = decodeFrame(
+      frame('agent_finished', {
+        agent: 'FacilitiesAgent',
+        call_id: 'c1',
+        status: 'completed',
+        duration_ms: 3200,
+        tools_used: ['realtime_data_retrieve', 'alarm_log_list'],
+        response_chars: 412,
+        chart_available: true,
+        finished_at: 4200,
+      }),
+    )
+    expect(out?.event).toEqual({
+      type: 'agent_finished',
+      agent: 'FacilitiesAgent',
+      callId: 'c1',
+      status: 'ok',
+      durationMs: 3200,
+      toolsUsed: ['realtime_data_retrieve', 'alarm_log_list'],
+      responseChars: 412,
+      chartAvailable: true,
+      finishedAt: 4200,
+    })
+    const failed = decodeFrame(
+      frame('agent_finished', { agent: 'FacilitiesAgent', callId: 'c1', status: 'errored' }),
+    )
+    expect(failed?.event).toMatchObject({ status: 'error' })
+  })
+
+  it('tags a call_*_agent step as an agent and any other tool as a tool', () => {
+    const agent = decodeFrame(
+      frame('step_started', { tool: 'call_facilities_agent', call_id: 'c1' }),
+    )
+    expect(agent?.event).toMatchObject({ step: { id: 'c1', kind: 'agent' } })
+    const tool = decodeFrame(frame('step_started', { tool: 'data_query_retrieve', call_id: 'c2' }))
+    expect(tool?.event).toMatchObject({ step: { id: 'c2', kind: 'tool' } })
+  })
+
+  it('decodes the lineage and timing a tagged backend stamps on step events', () => {
+    const out = decodeFrame(
+      frame('step_result', {
+        tool: 'realtime_data_retrieve',
+        call_id: 's1',
+        status: 'completed',
+        agent: 'FacilitiesAgent',
+        parent_call_id: 'c1',
+        depth: 1,
+        started_at: 1100,
+        finished_at: 1310,
+        duration_ms: 210,
+      }),
+    )
+    expect(out?.event).toMatchObject({
+      step: {
+        id: 's1',
+        status: 'ok',
+        kind: 'tool',
+        agent: 'FacilitiesAgent',
+        parentId: 'c1',
+        depth: 1,
+        startedAt: 1100,
+        finishedAt: 1310,
+        durationMs: 210,
+      },
+    })
+  })
+
+  it('decodes the expiry an approval step carries', () => {
+    const out = decodeFrame(
+      frame('step_started', {
+        tool: 'service_request_create',
+        call_id: 'c3',
+        status: 'awaiting_approval',
+        expires_at: 1725000300000,
+      }),
+    )
+    expect(out?.event).toMatchObject({
+      step: { status: 'awaiting_approval', expiresAt: 1725000300000 },
+    })
+  })
+
+  it('decodes the error cause and drops one it does not know', () => {
+    const out = decodeFrame(
+      frame('error', { code: 'budget', detail: 'Out of credit.', cause: 'budget' }),
+    )
+    expect(out?.event).toEqual({
+      type: 'error',
+      error: { message: 'Out of credit.', code: 'budget', cause: 'budget' },
+    })
+    const odd = decodeFrame(frame('error', { detail: 'x', cause: 'cosmic rays' }))
+    expect(odd?.event).toEqual({ type: 'error', error: { message: 'x' } })
+  })
+})
+
 describe('decodePolledEvent', () => {
   it('decodes a polled row shaped as { event, ... }', () => {
     const out = decodePolledEvent({ event: 'message_delta', text: 'hi', id: '3' })

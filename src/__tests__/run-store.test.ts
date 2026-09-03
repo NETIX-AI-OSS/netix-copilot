@@ -7,11 +7,91 @@ import {
   isRunActive,
   isRunFinished,
 } from '../runtime/run-store'
-import type { CopilotEvent, RunState } from '../types'
+import { buildTraceTree } from '../runtime/trace-model'
+import type { CopilotEvent, PlanStep, RunState } from '../types'
 
 function reduce(events: CopilotEvent[], from: RunState = initialRunState()): RunState {
   return events.reduce(applyEvent, from)
 }
+
+const AGENT_STARTED: CopilotEvent = {
+  type: 'agent_started',
+  agent: 'FacilitiesAgent',
+  callId: 'c1',
+  task: 'Read live values for AHU-01',
+  startedAt: 1000,
+}
+
+// What an untagged backend streams: the meta-tool and the specialist's call, both flat.
+const FLAT_STREAM: CopilotEvent[] = [
+  { type: 'run_started', turnId: 't1' },
+  {
+    type: 'step_started',
+    step: {
+      id: 'c1',
+      title: 'call_facilities_agent',
+      tool: 'call_facilities_agent',
+      status: 'running',
+      kind: 'agent',
+    },
+  },
+  {
+    type: 'step_started',
+    step: {
+      id: 's1',
+      title: 'realtime_data_retrieve',
+      tool: 'realtime_data_retrieve',
+      status: 'running',
+      kind: 'tool',
+    },
+  },
+  {
+    type: 'step_result',
+    step: {
+      id: 's1',
+      title: 'realtime_data_retrieve',
+      status: 'ok',
+      kind: 'tool',
+      durationMs: 210,
+    },
+  },
+  {
+    type: 'step_result',
+    step: {
+      id: 'c1',
+      title: 'call_facilities_agent',
+      status: 'ok',
+      kind: 'agent',
+      durationMs: 3200,
+    },
+  },
+  { type: 'message_delta', text: 'AHU-01 is healthy.' },
+]
+
+// The same run as the stored row rebuilds it once the run has ended.
+const REBUILT_STEPS: PlanStep[] = [
+  {
+    id: 'c1',
+    title: 'Read live values for AHU-01',
+    tool: 'call_facilities_agent',
+    status: 'ok',
+    kind: 'agent',
+    agent: 'FacilitiesAgent',
+    task: 'Read live values for AHU-01',
+    durationMs: 3200,
+  },
+  {
+    id: 's1',
+    title: 'realtime_data_retrieve',
+    tool: 'realtime_data_retrieve',
+    status: 'ok',
+    kind: 'tool',
+    agent: 'FacilitiesAgent',
+    parentId: 'c1',
+    depth: 1,
+    output: { values: [18.2] },
+  },
+]
 
 describe('run-store', () => {
   it('starts idle with nothing in it', () => {
@@ -179,5 +259,156 @@ describe('run-store', () => {
     expect(isRunFinished(at('error'))).toBe(true)
     expect(isRunFinished(at('cancelled'))).toBe(true)
     expect(isRunFinished(at('paused'))).toBe(false)
+  })
+})
+
+describe('run-store reasoning trace', () => {
+  it('records the route, the answering agent and the start time from run_started', () => {
+    const state = reduce([
+      { type: 'run_started', turnId: 't1', route: 'direct', agent: 'AssetAgent', startedAt: 99 },
+    ])
+    expect(state).toMatchObject({ route: 'direct', agent: 'AssetAgent', startedAt: 99 })
+  })
+
+  it('keeps the plan as the model wrote it: reasoning and lines, never pending steps', () => {
+    const state = reduce([
+      { type: 'plan', steps: [], lines: ['Read values', 'Summarise'], reasoning: 'Two domains.' },
+    ])
+    expect(state.hasPlan).toBe(true)
+    expect(state.steps).toEqual([])
+    expect(state.plan).toEqual({ lines: ['Read values', 'Summarise'], reasoning: 'Two domains.' })
+  })
+
+  it('leaves the plan unset when a keyed plan carries no lines', () => {
+    const state = reduce([{ type: 'plan', steps: [{ id: 's1', title: 'One', status: 'pending' }] }])
+    expect(state.hasPlan).toBe(true)
+    expect(state.plan).toBeUndefined()
+  })
+
+  it('opens the agent card over the meta-tool step that arrived first', () => {
+    const state = reduce([FLAT_STREAM[1]!, AGENT_STARTED])
+    expect(state.steps).toEqual([
+      {
+        id: 'c1',
+        title: 'Read live values for AHU-01',
+        tool: 'call_facilities_agent',
+        status: 'running',
+        kind: 'agent',
+        agent: 'FacilitiesAgent',
+        task: 'Read live values for AHU-01',
+        startedAt: 1000,
+      },
+    ])
+  })
+
+  it('opens the agent card even when agent_started outran the meta-tool step', () => {
+    const state = reduce([AGENT_STARTED])
+    expect(state.steps).toHaveLength(1)
+    expect(state.steps[0]).toMatchObject({ id: 'c1', kind: 'agent', status: 'running' })
+    const bare = reduce([{ type: 'agent_started', agent: 'AssetAgent', callId: 'c9' }])
+    expect(bare.steps[0]?.title).toBe('AssetAgent')
+  })
+
+  it('leaves queued once a specialist starts working', () => {
+    const state = reduce([{ type: 'queued', position: 1 }, AGENT_STARTED])
+    expect(state.status).toBe('streaming')
+  })
+
+  it('closes the card on agent_finished and keeps the task as its title', () => {
+    const state = reduce([
+      AGENT_STARTED,
+      {
+        type: 'agent_finished',
+        agent: 'FacilitiesAgent',
+        callId: 'c1',
+        status: 'error',
+        durationMs: 400,
+        finishedAt: 1400,
+      },
+    ])
+    expect(state.steps[0]).toMatchObject({
+      id: 'c1',
+      title: 'Read live values for AHU-01',
+      status: 'error',
+      durationMs: 400,
+      finishedAt: 1400,
+      startedAt: 1000,
+    })
+  })
+
+  it('nests a tagged child under its agent while live', () => {
+    const state = reduce([
+      AGENT_STARTED,
+      {
+        type: 'step_started',
+        step: {
+          id: 's1',
+          title: 'realtime_data_retrieve',
+          status: 'running',
+          kind: 'tool',
+          parentId: 'c1',
+          agent: 'FacilitiesAgent',
+        },
+      },
+    ])
+    const tree = buildTraceTree(state.steps)
+    expect(tree.map((node) => node.step.id)).toEqual(['c1'])
+    expect(tree[0]?.children.map((node) => node.step.id)).toEqual(['s1'])
+  })
+
+  it('merges the stored trace into the terminal event without reordering what streamed', () => {
+    const live = reduce(FLAT_STREAM)
+    const state = applyEvent(live, {
+      type: 'done',
+      steps: [
+        ...REBUILT_STEPS,
+        { id: 's2', title: 'alarm_log_list', status: 'ok', kind: 'tool', parentId: 'c1' },
+      ],
+    })
+    expect(state.steps.map((step) => step.id)).toEqual(['c1', 's1', 's2'])
+    expect(state.steps[0]).toMatchObject({
+      agent: 'FacilitiesAgent',
+      task: 'Read live values for AHU-01',
+    })
+    expect(state.steps[1]).toMatchObject({ parentId: 'c1', output: { values: [18.2] } })
+    expect(state.rebuilt).toBe(true)
+  })
+
+  it('does not call it a rebuild when the summary only confirms what streamed', () => {
+    const tagged = reduce([
+      AGENT_STARTED,
+      { type: 'step_result', step: { ...REBUILT_STEPS[1]!, output: undefined } as PlanStep },
+    ])
+    const state = applyEvent(tagged, { type: 'done', steps: REBUILT_STEPS })
+    expect(state.rebuilt).toBeUndefined()
+    expect(state.steps[1]?.output).toEqual({ values: [18.2] })
+  })
+
+  it('takes the stored plan only when the stream carried none', () => {
+    const stored = { lines: ['from the row'], reasoning: 'stored' }
+    const fresh = reduce([{ type: 'done', plan: stored }])
+    expect(fresh.plan).toEqual(stored)
+    expect(fresh.hasPlan).toBe(true)
+    const streamed = reduce([
+      { type: 'plan', steps: [], lines: ['from the wire'] },
+      { type: 'done', plan: stored },
+    ])
+    expect(streamed.plan).toEqual({ lines: ['from the wire'] })
+  })
+
+  // An old backend streams every call flat. The trace stays flat until the run ends and the stored
+  // sub_execution_log says which specialist made which call; then it nests and says it was rebuilt.
+  it('renders an untagged stream flat, then nests it from the terminal read-back', () => {
+    const live = reduce(FLAT_STREAM)
+    expect(buildTraceTree(live.steps).map((node) => node.step.id)).toEqual(['c1', 's1'])
+    expect(live.steps.every((step) => step.parentId === undefined)).toBe(true)
+    expect(live.rebuilt).toBeUndefined()
+
+    const done = applyEvent(live, { type: 'done', steps: REBUILT_STEPS, executionMs: 6500 })
+    const tree = buildTraceTree(done.steps)
+    expect(tree.map((node) => node.step.id)).toEqual(['c1'])
+    expect(tree[0]?.children.map((node) => node.step.id)).toEqual(['s1'])
+    expect(done.steps[0]?.title).toBe('Read live values for AHU-01')
+    expect(done).toMatchObject({ status: 'done', rebuilt: true, executionMs: 6500 })
   })
 })
