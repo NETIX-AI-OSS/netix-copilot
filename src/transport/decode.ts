@@ -4,6 +4,7 @@
 // nested under a `step` key. A frame it cannot understand is dropped, never thrown, because one
 // malformed frame must not kill a run that is otherwise streaming fine.
 
+import { isAgentStep } from '../runtime/trace-model'
 import type {
   CopilotErrorPayload,
   CopilotEvent,
@@ -162,7 +163,68 @@ function decodeStep(source: Record<string, unknown>, fallbackStatus: StepStatus)
   if (durationMs !== undefined) step.durationMs = durationMs
   const detail = asString(pick(nested, ['detail', 'result', 'message', 'output']))
   if (detail !== undefined) step.detail = detail
+  const agent = asString(pick(nested, ['agent', 'agent_name', 'agentName']))
+  if (agent !== undefined) step.agent = agent
+  const parentId = asString(
+    pick(nested, ['parent_call_id', 'parentCallId', 'parent_id', 'parentId']),
+  )
+  if (parentId !== undefined && parentId !== '') step.parentId = parentId
+  const depth = asNumber(nested.depth)
+  if (depth !== undefined) step.depth = depth
+  const startedAt = asNumber(pick(nested, ['started_at', 'startedAt']))
+  if (startedAt !== undefined) step.startedAt = startedAt
+  const finishedAt = asNumber(pick(nested, ['finished_at', 'finishedAt']))
+  if (finishedAt !== undefined) step.finishedAt = finishedAt
+  const expiresAt = asNumber(pick(nested, ['expires_at', 'expiresAt']))
+  if (expiresAt !== undefined) step.expiresAt = expiresAt
   return step
+}
+
+// A live step is either a specialist delegation or a plain tool call; the trace draws them apart.
+function decodeLiveStep(source: Record<string, unknown>, fallbackStatus: StepStatus): PlanStep {
+  const step = decodeStep(source, fallbackStatus)
+  return { ...step, kind: isAgentStep(step) ? 'agent' : 'tool' }
+}
+
+function decodeAgentStarted(payload: Record<string, unknown>): CopilotEvent | null {
+  const agent = asString(pick(payload, ['agent', 'agent_name', 'agentName']))
+  const callId = asString(pick(payload, ['call_id', 'callId', 'id']))
+  if (agent === undefined || callId === undefined) return null
+  const event: CopilotEvent = { type: 'agent_started', agent, callId }
+  const parentId = asString(pick(payload, ['parent_call_id', 'parentCallId', 'parent_id']))
+  if (parentId !== undefined && parentId !== '') event.parentId = parentId
+  const task = asString(payload.task)
+  if (task !== undefined) event.task = task
+  const feedback = asString(payload.feedback)
+  if (feedback !== undefined) event.feedback = feedback
+  const startedAt = asNumber(pick(payload, ['started_at', 'startedAt']))
+  if (startedAt !== undefined) event.startedAt = startedAt
+  return event
+}
+
+function decodeAgentFinished(payload: Record<string, unknown>): CopilotEvent | null {
+  const agent = asString(pick(payload, ['agent', 'agent_name', 'agentName']))
+  const callId = asString(pick(payload, ['call_id', 'callId', 'id']))
+  if (agent === undefined || callId === undefined) return null
+  const event: CopilotEvent = {
+    type: 'agent_finished',
+    agent,
+    callId,
+    status: asStatus(pick(payload, ['status', 'state']), 'ok') === 'error' ? 'error' : 'ok',
+  }
+  const durationMs = asNumber(pick(payload, ['duration_ms', 'durationMs']))
+  if (durationMs !== undefined) event.durationMs = durationMs
+  const tools = pick(payload, ['tools_used', 'toolsUsed', 'tools'])
+  if (Array.isArray(tools)) {
+    event.toolsUsed = tools.map(asString).filter((name): name is string => name !== undefined)
+  }
+  const responseChars = asNumber(pick(payload, ['response_chars', 'responseChars']))
+  if (responseChars !== undefined) event.responseChars = responseChars
+  const chartAvailable = pick(payload, ['chart_available', 'chartAvailable'])
+  if (typeof chartAvailable === 'boolean') event.chartAvailable = chartAvailable
+  const finishedAt = asNumber(pick(payload, ['finished_at', 'finishedAt']))
+  if (finishedAt !== undefined) event.finishedAt = finishedAt
+  return event
 }
 
 function decodeUsage(source: Record<string, unknown>): CopilotUsage {
@@ -219,6 +281,15 @@ function decodeError(source: Record<string, unknown>): CopilotErrorPayload {
   }
   const code = asString(pick(nested, ['code', 'error_code', 'errorCode']))
   if (code !== undefined) error.code = code
+  const cause = asString(nested.cause)
+  if (
+    cause === 'budget' ||
+    cause === 'tool_error' ||
+    cause === 'provider' ||
+    cause === 'internal'
+  ) {
+    error.cause = cause
+  }
   const retryable = pick(nested, ['retryable', 'can_retry', 'canRetry'])
   if (typeof retryable === 'boolean') error.retryable = retryable
   return error
@@ -247,6 +318,12 @@ function toEvent(name: CopilotEventName, payload: Record<string, unknown>): Copi
       if (tier === 'base' || tier === 'high' || tier === 'max') event.modelTier = tier
       const credits = asNumber(pick(payload, ['credits_remaining', 'creditsRemaining']))
       if (credits !== undefined) event.creditsRemaining = credits
+      const route = asString(payload.route)
+      if (route === 'direct' || route === 'orchestrator') event.route = route
+      const agent = asString(pick(payload, ['agent', 'agent_name', 'agentName']))
+      if (agent !== undefined) event.agent = agent
+      const startedAt = asNumber(pick(payload, ['started_at', 'startedAt']))
+      if (startedAt !== undefined) event.startedAt = startedAt
       return event
     }
     case 'queued': {
@@ -256,15 +333,26 @@ function toEvent(name: CopilotEventName, payload: Record<string, unknown>): Copi
       return event
     }
     case 'plan': {
+      // ml-engine's plan is free text: the steps are strings and carry no ids, so they are shown
+      // as lines and never matched against, or turned into, pending steps.
       const raw = pick(payload, ['steps', 'plan', 'items'])
       const list = Array.isArray(raw) ? raw : []
       const steps = list.filter(isRecord).map((entry) => decodeStep(entry, 'pending'))
-      return { type: 'plan', steps }
+      const event: CopilotEvent = { type: 'plan', steps }
+      const lines = list.filter((entry): entry is string => typeof entry === 'string')
+      if (lines.length > 0) event.lines = lines
+      const reasoning = asString(pick(payload, ['reasoning', 'rationale']))
+      if (reasoning !== undefined) event.reasoning = reasoning
+      return event
     }
+    case 'agent_started':
+      return decodeAgentStarted(payload)
+    case 'agent_finished':
+      return decodeAgentFinished(payload)
     case 'step_started':
-      return { type: 'step_started', step: decodeStep(payload, 'running') }
+      return { type: 'step_started', step: decodeLiveStep(payload, 'running') }
     case 'step_result':
-      return { type: 'step_result', step: decodeStep(payload, 'ok') }
+      return { type: 'step_result', step: decodeLiveStep(payload, 'ok') }
     case 'message_delta': {
       const text = asString(pick(payload, ['text', 'delta', 'content', 'chunk', 'token']))
       if (text === undefined) return null

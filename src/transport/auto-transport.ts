@@ -5,12 +5,13 @@
 // the strength of one request: the streaming contract is asked directly before streaming is given up.
 
 import type { CopilotThread, SendTurnInput } from '../types'
-import { isRouteMissing } from './http'
+import { CopilotHttpError, isRouteMissing } from './http'
 import type {
   ConsumeRunOptions,
   CopilotTranscriptTurn,
   CopilotTransport,
   CreatedTurn,
+  ThreadPatch,
   TransportName,
 } from './types'
 
@@ -89,6 +90,20 @@ export class AutoTransport implements CopilotTransport {
     }
   }
 
+  // Thread housekeeping only the copilot contract serves. A transport without it throws the same
+  // missing-route error the route itself would, so the engine reverts its optimistic list edit.
+  updateThread(threadId: string, patch: ThreadPatch, signal?: AbortSignal): Promise<CopilotThread> {
+    const target = this.resolved ?? this.streaming
+    if (!target.updateThread) return Promise.reject(notServed('update'))
+    return target.updateThread(threadId, patch, signal)
+  }
+
+  deleteThread(threadId: string, signal?: AbortSignal): Promise<void> {
+    const target = this.resolved ?? this.streaming
+    if (!target.deleteThread) return Promise.reject(notServed('delete'))
+    return target.deleteThread(threadId, signal)
+  }
+
   // One request's failure is never proof that a contract is absent. ml-engine 404s a create that
   // names a thread the caller does not own, and reading that as "streaming is not deployed" pinned
   // the tab to polling for good over a stale bookmark. So a missing-route answer is corroborated
@@ -103,4 +118,12 @@ export class AutoTransport implements CopilotTransport {
       return true
     }
   }
+}
+
+function notServed(action: string): CopilotHttpError {
+  return new CopilotHttpError(
+    501,
+    '',
+    `netix-copilot: the selected transport cannot ${action} a conversation.`,
+  )
 }

@@ -45,6 +45,7 @@ describe('DEFAULT_SSE_ENDPOINTS', () => {
       cancelTurn: '/api/copilot-turn/{turnId}/cancel/',
       approval: '/api/copilot-turn/{turnId}/steps/{stepId}/approval/',
       threads: '/api/copilot-conversation/',
+      threadDetail: '/api/copilot-conversation/{threadId}/',
       threadTurns: '/api/copilot-turn/?conversation={threadId}',
     })
   })
@@ -57,7 +58,8 @@ describe('DEFAULT_SSE_ENDPOINTS', () => {
   })
 
   it('keeps every DRF route on the trailing slash the router requires', () => {
-    for (const key of ['createTurn', 'pollTurn', 'cancelTurn', 'approval', 'threads'] as const) {
+    const keys = ['createTurn', 'pollTurn', 'cancelTurn', 'approval', 'threads', 'threadDetail']
+    for (const key of keys as Array<keyof typeof DEFAULT_SSE_ENDPOINTS>) {
       expect(DEFAULT_SSE_ENDPOINTS[key].endsWith('/')).toBe(true)
     }
   })
@@ -809,6 +811,376 @@ describe('a live streaming run through the engine', () => {
     expect(engine.activeRun?.executionMs).toBe(2000)
     // The turn is added and never taken away: no re-read of the thread, so nothing to flash empty.
     expect(widths.every((count) => count === 1)).toBe(true)
+    engine.dispose()
+  })
+})
+
+// The stored row for an orchestrated run: the meta-tool at the top, the specialist's call under
+// it in sub_execution_log with the same call_id the stream carried, and the plan under make_plan.
+const ORCHESTRATED_ROW = {
+  id: 't1',
+  status: 1,
+  tools: ['call_facilities_agent', 'realtime_data_retrieve'],
+  execution_time: 4,
+  plan: [
+    { tool: 'make_plan', call_id: 'p0', status: 'completed' },
+    {
+      tool: 'call_facilities_agent',
+      call_id: 'c1',
+      status: 'completed',
+      arguments: { task: 'Read live values for AHU-01' },
+      duration_ms: 3200,
+    },
+  ],
+  execution_log: [
+    {
+      tool: 'make_plan',
+      call_id: 'p0',
+      output: { steps: ['Read live values for AHU-01'], reasoning: 'One domain.' },
+    },
+    {
+      tool: 'call_facilities_agent',
+      call_id: 'c1',
+      arguments: { task: 'Read live values for AHU-01' },
+      output: {
+        specialist: 'FacilitiesAgent',
+        response: 'Supply air is 18.2 C.',
+        tools_used: ['realtime_data_retrieve'],
+        sub_execution_log: [
+          {
+            tool: 'realtime_data_retrieve',
+            call_id: 's1',
+            status: 'ok',
+            output: { values: [18.2] },
+          },
+        ],
+      },
+    },
+  ],
+}
+
+describe('SseTransport reasoning trace', () => {
+  it('attaches the rebuilt tree and the plan to the terminal event the frame could not carry', async () => {
+    const { transport } = sseTransport([
+      sseResponse(
+        frames(
+          { event: 'run_started', data: { turn_id: 't1' } },
+          { event: 'step_started', data: { tool: 'call_facilities_agent', call_id: 'c1' } },
+          { event: 'step_started', data: { tool: 'realtime_data_retrieve', call_id: 's1' } },
+          {
+            event: 'step_result',
+            data: { tool: 'realtime_data_retrieve', call_id: 's1', status: 'completed' },
+          },
+          {
+            event: 'step_result',
+            data: { tool: 'call_facilities_agent', call_id: 'c1', status: 'completed' },
+          },
+          { event: 'done', data: { status: 'completed', turn_id: 't1', execution_time: 4 } },
+        ),
+      ),
+      jsonResponse(ORCHESTRATED_ROW),
+    ])
+    const events = await collect(transport)
+    const done = events[events.length - 1]?.event
+    expect(done?.type).toBe('done')
+    if (done?.type !== 'done') return
+    expect(done.plan).toEqual({ lines: ['Read live values for AHU-01'], reasoning: 'One domain.' })
+    expect(done.steps?.map((step) => [step.id, step.parentId])).toEqual([
+      ['c1', undefined],
+      ['s1', 'c1'],
+    ])
+    expect(done.steps?.[0]).toMatchObject({
+      kind: 'agent',
+      agent: 'FacilitiesAgent',
+      task: 'Read live values for AHU-01',
+      durationMs: 3200,
+    })
+    expect(done.steps?.[1]).toMatchObject({ agent: 'FacilitiesAgent', output: { values: [18.2] } })
+  })
+
+  it('maps the pin, the surface and the creation time on a conversation row', async () => {
+    const { transport } = sseTransport([
+      jsonResponse({
+        results: [
+          {
+            id: 12,
+            title: 'Why is AHU-1 offline?',
+            is_pinned: true,
+            surface: 'web',
+            model_tier: 'high',
+            created_on: '2026-08-19T09:00:00Z',
+            last_activity_at: '2026-08-20T10:00:00Z',
+          },
+        ],
+      }),
+    ])
+    expect(await transport.listThreads()).toEqual([
+      {
+        id: '12',
+        title: 'Why is AHU-1 offline?',
+        updatedAt: Date.parse('2026-08-20T10:00:00Z'),
+        modelTier: 'high',
+        isPinned: true,
+        surface: 'web',
+        createdAt: Date.parse('2026-08-19T09:00:00Z'),
+      },
+    ])
+  })
+
+  it('renames and pins through a PATCH of the conversation detail', async () => {
+    const { transport, fetchImpl } = sseTransport([
+      jsonResponse({
+        id: 12,
+        title: 'Renamed',
+        is_pinned: true,
+        last_activity_at: '2026-08-20T10:00:00Z',
+      }),
+    ])
+    const saved = await transport.updateThread('12', { title: 'Renamed', isPinned: true })
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('https://ml.example.com/api/copilot-conversation/12/')
+    expect(init.method).toBe('PATCH')
+    expect(JSON.parse(String(init.body))).toEqual({ title: 'Renamed', is_pinned: true })
+    expect(saved).toMatchObject({ id: '12', title: 'Renamed', isPinned: true })
+  })
+
+  it('sends only the field being changed', async () => {
+    const { transport, fetchImpl } = sseTransport([jsonResponse({ id: 12, title: 'Kept' })])
+    await transport.updateThread('12', { isPinned: false })
+    const init = (fetchImpl.mock.calls[0] as [string, RequestInit])[1]
+    expect(JSON.parse(String(init.body))).toEqual({ is_pinned: false })
+  })
+
+  it('refuses to invent a thread when the update answers with no row', async () => {
+    const { transport } = sseTransport([jsonResponse([])])
+    await expect(transport.updateThread('12', { title: 'x' })).rejects.toThrow(/unexpected payload/)
+  })
+
+  it('deletes through the conversation detail and raises a real failure', async () => {
+    const { transport, fetchImpl } = sseTransport([
+      { ok: true, status: 204, headers: new Headers(), body: null, text: async () => '' } as never,
+      errorResponse(500, 'boom'),
+    ])
+    await expect(transport.deleteThread('12')).resolves.toBeUndefined()
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('https://ml.example.com/api/copilot-conversation/12/')
+    expect(init.method).toBe('DELETE')
+    await expect(transport.deleteThread('12')).rejects.toThrow(/status 500/)
+  })
+})
+
+describe('AutoTransport thread housekeeping', () => {
+  it('delegates rename and delete to the streaming contract', async () => {
+    const sseFetch = vi.fn(async (_url: string, init?: RequestInit) =>
+      init?.method === 'DELETE'
+        ? ({
+            ok: true,
+            status: 204,
+            headers: new Headers(),
+            body: null,
+            text: async () => '',
+          } as never)
+        : jsonResponse({ id: 12, title: 'Renamed' }),
+    )
+    const auto = new AutoTransport(
+      new SseTransport({ baseUrl: 'https://ml.example.com', fetchImpl: sseFetch as never }),
+      new AgenticTransport({ baseUrl: 'https://ml.example.com' }),
+    )
+    expect(await auto.updateThread('12', { title: 'Renamed' })).toMatchObject({ title: 'Renamed' })
+    await expect(auto.deleteThread('12')).resolves.toBeUndefined()
+    expect(sseFetch).toHaveBeenCalledTimes(2)
+  })
+
+  // The engine reverts its optimistic edit on any rejection; a transport without the routes has
+  // to reject the way a missing route would rather than resolve as if it had saved something.
+  it('throws a missing-route error when the selected transport cannot house-keep threads', async () => {
+    const bare: CopilotTransport = {
+      name: 'sse',
+      createTurn: async () => ({ turnId: '1' }),
+      consumeRun: async () => undefined,
+      cancelTurn: async () => undefined,
+      respondToApproval: async () => undefined,
+      listThreads: async () => [],
+    }
+    const auto = new AutoTransport(bare, bare)
+    await expect(auto.updateThread('12', { title: 'x' })).rejects.toSatisfy(
+      (error: unknown) => error instanceof CopilotHttpError && error.isRouteMissing,
+    )
+    await expect(auto.deleteThread('12')).rejects.toBeInstanceOf(CopilotHttpError)
+  })
+})
+
+// A tagged backend opens and closes each specialist with its own events and stamps lineage on
+// every step, so the tree is right while live and the read-back only confirms it.
+describe('a live streaming run on a tagged backend', () => {
+  it('nests the specialist call under its card as it streams and closes the card on agent_finished', async () => {
+    const responses = [
+      jsonResponse({ turn_id: 't1', thread_id: '12' }, 201),
+      sseResponse(
+        frames(
+          {
+            event: 'run_started',
+            data: { turn_id: 't1', route: 'orchestrator', started_at: 1000 },
+          },
+          {
+            event: 'plan',
+            data: { steps: ['Read live values for AHU-01'], reasoning: 'One domain.' },
+          },
+          { event: 'step_started', data: { tool: 'call_facilities_agent', call_id: 'c1' } },
+          {
+            event: 'agent_started',
+            data: {
+              agent: 'FacilitiesAgent',
+              call_id: 'c1',
+              task: 'Read live values for AHU-01',
+              started_at: 1000,
+            },
+          },
+          {
+            event: 'step_started',
+            data: {
+              tool: 'realtime_data_retrieve',
+              call_id: 's1',
+              agent: 'FacilitiesAgent',
+              parent_call_id: 'c1',
+              depth: 1,
+            },
+          },
+          {
+            event: 'step_result',
+            data: {
+              tool: 'realtime_data_retrieve',
+              call_id: 's1',
+              status: 'completed',
+              agent: 'FacilitiesAgent',
+              parent_call_id: 'c1',
+              depth: 1,
+              duration_ms: 210,
+            },
+          },
+          {
+            event: 'agent_finished',
+            data: {
+              agent: 'FacilitiesAgent',
+              call_id: 'c1',
+              status: 'completed',
+              duration_ms: 3200,
+            },
+          },
+          {
+            event: 'step_result',
+            data: { tool: 'call_facilities_agent', call_id: 'c1', status: 'completed' },
+          },
+          { event: 'message_delta', data: { text: 'AHU-01 is healthy.' } },
+          { event: 'done', data: { status: 'completed', turn_id: 't1', execution_time: 4 } },
+        ),
+      ),
+      jsonResponse(ORCHESTRATED_ROW),
+    ]
+    const engine = new CopilotEngine({
+      transport: new SseTransport({
+        baseUrl: 'https://ml.example.com',
+        fetchImpl: (async () => responses.shift() ?? errorResponse(500)) as never,
+        sleepImpl: instantSleep,
+      }),
+    })
+    const seen: Array<ReturnType<typeof engine.getSnapshot>['turns'][number]['run']> = []
+    engine.subscribe(() => {
+      const run = engine.getSnapshot().turns[0]?.run
+      if (run) seen.push(run)
+    })
+
+    await engine.send('Summarise AHU-01')
+    await vi.waitFor(() => expect(engine.activeRun?.status).toBe('done'))
+
+    // The child was nested and the card open before the specialist finished.
+    const midway = seen.find((run) => run.steps.some((step) => step.id === 's1'))
+    expect(midway?.steps.find((step) => step.id === 's1')?.parentId).toBe('c1')
+    expect(midway?.steps.find((step) => step.id === 'c1')).toMatchObject({
+      kind: 'agent',
+      status: 'running',
+      agent: 'FacilitiesAgent',
+      title: 'Read live values for AHU-01',
+    })
+    const closed = seen.find(
+      (run) => run.steps.find((step) => step.id === 'c1')?.durationMs === 3200,
+    )
+    expect(closed?.steps.find((step) => step.id === 'c1')?.status).toBe('ok')
+    expect(closed?.status).toBe('streaming')
+
+    const run = engine.activeRun!
+    expect(run).toMatchObject({ route: 'orchestrator', startedAt: 1000, hasPlan: true })
+    expect(run.plan).toEqual({ lines: ['Read live values for AHU-01'], reasoning: 'One domain.' })
+    expect(run.steps.map((step) => [step.id, step.parentId])).toEqual([
+      ['c1', undefined],
+      ['s1', 'c1'],
+    ])
+    expect(run.steps[1]?.output).toEqual({ values: [18.2] })
+    // The stream carried every id and every parent, so nothing was rebuilt.
+    expect(run.rebuilt).toBeUndefined()
+    engine.dispose()
+  })
+})
+
+// An old backend sends none of that. The trace renders flat while live and nests, marked as
+// rebuilt, once the terminal read-back brings the stored lineage in.
+describe('a live streaming run on an untagged backend', () => {
+  it('renders flat, then nests from the read-back and says so', async () => {
+    const responses = [
+      jsonResponse({ turn_id: 't1', thread_id: '12' }, 201),
+      sseResponse(
+        frames(
+          { event: 'run_started', data: { turn_id: 't1' } },
+          { event: 'step_started', data: { tool: 'call_facilities_agent', call_id: 'c1' } },
+          { event: 'step_started', data: { tool: 'realtime_data_retrieve', call_id: 's1' } },
+          {
+            event: 'step_result',
+            data: { tool: 'realtime_data_retrieve', call_id: 's1', status: 'completed' },
+          },
+          {
+            event: 'step_result',
+            data: { tool: 'call_facilities_agent', call_id: 'c1', status: 'completed' },
+          },
+          { event: 'message_delta', data: { text: 'AHU-01 is healthy.' } },
+          { event: 'done', data: { status: 'completed', turn_id: 't1', execution_time: 4 } },
+        ),
+      ),
+      jsonResponse(ORCHESTRATED_ROW),
+    ]
+    const engine = new CopilotEngine({
+      transport: new SseTransport({
+        baseUrl: 'https://ml.example.com',
+        fetchImpl: (async () => responses.shift() ?? errorResponse(500)) as never,
+        sleepImpl: instantSleep,
+      }),
+      now: () => 777,
+    })
+    const seen: Array<ReturnType<typeof engine.getSnapshot>['turns'][number]['run']> = []
+    engine.subscribe(() => {
+      const run = engine.getSnapshot().turns[0]?.run
+      if (run) seen.push(run)
+    })
+
+    await engine.send('Summarise AHU-01')
+    await vi.waitFor(() => expect(engine.activeRun?.status).toBe('done'))
+
+    const flat = seen.find((run) => run.text !== '' && run.status === 'streaming')
+    expect(flat?.steps.map((step) => step.id)).toEqual(['c1', 's1'])
+    expect(flat?.steps.every((step) => step.parentId === undefined)).toBe(true)
+    expect(flat?.plan).toBeUndefined()
+
+    const run = engine.activeRun!
+    expect(run.startedAt).toBe(777)
+    expect(run.rebuilt).toBe(true)
+    expect(run.steps.map((step) => [step.id, step.parentId])).toEqual([
+      ['c1', undefined],
+      ['s1', 'c1'],
+    ])
+    expect(run.steps[0]).toMatchObject({
+      agent: 'FacilitiesAgent',
+      title: 'Read live values for AHU-01',
+    })
+    expect(run.plan?.lines).toEqual(['Read live values for AHU-01'])
     engine.dispose()
   })
 })
