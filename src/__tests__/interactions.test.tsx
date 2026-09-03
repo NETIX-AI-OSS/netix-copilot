@@ -173,6 +173,9 @@ describe('the always-on dock against a cluster with no copilot routes', () => {
   it('shows an empty conversation list rather than surfacing the 404', async () => {
     const logger = { warn: vi.fn(), error: vi.fn() }
     mountWithThreads(logger)
+    // The list is fetched when the popover opens, not on every page load.
+    expect(engineRef?.getSnapshot().threadsLoaded).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: 'Conversations' }))
     expect(await screen.findByText('No earlier conversations.')).toBeTruthy()
     expect(engineRef?.getSnapshot().threadsLoaded).toBe(true)
     expect(engineRef?.getSnapshot().threads).toEqual([])
@@ -260,7 +263,7 @@ describe('Dock controls', () => {
     const transport = new DecisionTransport()
     mountDock(transport)
     fireEvent.click(screen.getByRole('button', { name: 'Close copilot' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Ask Copilot' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Copilot assistant' }))
     expect(screen.getByRole('complementary')).toBeTruthy()
   })
 
@@ -286,8 +289,8 @@ describe('Dock controls', () => {
     const handle = screen.getByRole('button', { name: 'Resize copilot dock' })
     fireEvent.keyDown(handle, { key: 'ArrowLeft' })
     const dock = document.querySelector('.nxcp-dock') as HTMLElement
-    expect(dock.style.width).toBe('444px')
-    expect(window.localStorage.getItem('netix-copilot.width')).toBe('444')
+    expect(dock.style.width).toBe('454px')
+    expect(window.localStorage.getItem('netix-copilot.width')).toBe('454')
   })
 
   it('shrinks with the opposite arrow and clamps at the minimum', () => {
@@ -305,8 +308,9 @@ describe('Dock controls', () => {
     mountDock(transport)
     const handle = stubPointerCapture(screen.getByRole('button', { name: 'Resize copilot dock' }))
     fireEvent.pointerDown(handle, { pointerId: 1 })
-    // jsdom ships no PointerEvent, so a MouseEvent carries clientX for the pointermove.
-    fireEvent(handle, pointerMoveAt(window.innerWidth - 500))
+    // jsdom ships no PointerEvent, so a MouseEvent carries clientX for the pointermove. The
+    // card floats 22px in from the edge, so the pointer sits that much further out.
+    fireEvent(handle, pointerMoveAt(window.innerWidth - 500 - 22))
     fireEvent.pointerUp(handle, { pointerId: 1 })
     const dock = document.querySelector('.nxcp-dock') as HTMLElement
     expect(dock.style.width).toBe('500px')
@@ -329,7 +333,7 @@ describe('Dock controls', () => {
     fireEvent.pointerDown(handle, { pointerId: 1 })
     fireEvent.pointerMove(handle, { pointerId: 1 })
     const dock = document.querySelector('.nxcp-dock') as HTMLElement
-    expect(dock.style.width).toBe('420px')
+    expect(dock.style.width).toBe('430px')
   })
 
   it('ignores pointer movement that did not start on the handle', () => {
@@ -338,7 +342,7 @@ describe('Dock controls', () => {
     const handle = screen.getByRole('button', { name: 'Resize copilot dock' })
     fireEvent(handle, pointerMoveAt(10))
     const dock = document.querySelector('.nxcp-dock') as HTMLElement
-    expect(dock.style.width).toBe('420px')
+    expect(dock.style.width).toBe('430px')
   })
 
   it('survives localStorage being unavailable', () => {

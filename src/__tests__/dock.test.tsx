@@ -139,7 +139,9 @@ describe('CopilotDock', () => {
         <CopilotDock />
       </CopilotProvider>,
     )
-    expect(screen.getByRole('button', { name: 'Ask Copilot' })).toBeTruthy()
+    // The pill is named for assistive tech; the visible label is what the hover reveals.
+    expect(screen.getByRole('button', { name: 'Copilot assistant' })).toBeTruthy()
+    expect(screen.getByText('Ask Copilot')).toBeTruthy()
     expect(screen.queryByRole('complementary')).toBeNull()
   })
 
@@ -201,7 +203,10 @@ describe('CopilotDock', () => {
     const t = vi.fn((key: string) => `T:${key}`)
     const transport = new ScriptedTransport()
     mount(transport, { t })
-    expect(screen.getByText('T:copilot.dock.title')).toBeTruthy()
+    // Once in the header, once as the empty-state heading.
+    expect(screen.getAllByText('T:copilot.dock.title')).toHaveLength(2)
+    expect(screen.getByText('T:copilot.dock.empty')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'T:copilot.dock.new' })).toBeTruthy()
   })
 
   it('renders an approval card for a step waiting on a decision', async () => {
@@ -264,7 +269,7 @@ describe('CopilotDock', () => {
     expect(screen.getByText('polling')).toBeTruthy()
   })
 
-  it('lists earlier conversations when threads are enabled', async () => {
+  it('lists earlier conversations in the header popover when threads are enabled', async () => {
     const transport = new ScriptedTransport()
     render(
       <CopilotProvider
@@ -275,7 +280,16 @@ describe('CopilotDock', () => {
         <CopilotDock defaultOpen />
       </CopilotProvider>,
     )
+    expect(screen.queryByRole('dialog', { name: 'Conversations' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Conversations' }))
+    expect(screen.getByRole('dialog', { name: 'Conversations' })).toBeTruthy()
     expect(await screen.findByText('Earlier question')).toBeTruthy()
+  })
+
+  it('hides the threads control when threads are disabled', () => {
+    const transport = new ScriptedTransport()
+    mount(transport)
+    expect(screen.queryByRole('button', { name: 'Conversations' })).toBeNull()
   })
 
   it('applies host theme tokens as CSS variables', () => {
@@ -387,6 +401,107 @@ describe('CopilotDock open state', () => {
 
   it('hides the launcher for a host that opens the dock from its own chrome', () => {
     renderDock({ open: false, showLauncher: false })
-    expect(screen.queryByRole('button', { name: 'Ask Copilot' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Copilot assistant' })).toBeNull()
+  })
+})
+
+// min / dock / full. `open` stays the two-state view of the same machine: open === mode !== 'min'.
+describe('CopilotDock modes', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+  })
+
+  function renderDock(props: Partial<CopilotDockProps>) {
+    const transport = new ScriptedTransport()
+    const tree = (p: Partial<CopilotDockProps>) => (
+      <CopilotProvider
+        config={{ baseUrl: 'https://x' }}
+        adapters={testAdapters()}
+        transport={transport}
+      >
+        <CopilotDock showThreads={false} {...p} />
+      </CopilotProvider>
+    )
+    const utils = render(tree(props))
+    return {
+      ...utils,
+      rerenderWith: (next: Partial<CopilotDockProps>) => utils.rerender(tree(next)),
+    }
+  }
+
+  it('renders nothing in full mode and comes back when demoted', () => {
+    const { rerenderWith } = renderDock({ mode: 'full' })
+    expect(screen.queryByRole('complementary')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Copilot assistant' })).toBeNull()
+    rerenderWith({ mode: 'dock' })
+    expect(screen.getByRole('complementary')).toBeTruthy()
+    rerenderWith({ mode: 'min' })
+    expect(screen.getByRole('button', { name: 'Copilot assistant' })).toBeTruthy()
+  })
+
+  it('offers Expand only when the host can act on it', () => {
+    renderDock({ defaultOpen: true })
+    expect(screen.queryByRole('button', { name: 'Expand' })).toBeNull()
+    cleanup()
+    const onModeChange = vi.fn()
+    renderDock({ defaultOpen: true, onModeChange })
+    fireEvent.click(screen.getByRole('button', { name: 'Expand' }))
+    expect(onModeChange).toHaveBeenCalledWith('full')
+    // Uncontrolled: the dock steps aside for the host page and remembers it was open.
+    expect(screen.queryByRole('complementary')).toBeNull()
+    expect(window.localStorage.getItem('netix-copilot.open')).toBe('true')
+  })
+
+  it('minimises to the launcher and reports both views of the change', () => {
+    const onModeChange = vi.fn()
+    const onOpenChange = vi.fn()
+    renderDock({ defaultOpen: true, onModeChange, onOpenChange })
+    fireEvent.click(screen.getByRole('button', { name: 'Minimise' }))
+    expect(onModeChange).toHaveBeenCalledWith('min')
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    expect(screen.getByRole('button', { name: 'Copilot assistant' })).toBeTruthy()
+    expect(window.localStorage.getItem('netix-copilot.open')).toBe('false')
+  })
+
+  it('keeps a controlled open prop as the two-state view of the mode', () => {
+    const onModeChange = vi.fn()
+    const onOpenChange = vi.fn()
+    renderDock({ open: false, onModeChange, onOpenChange })
+    fireEvent.click(screen.getByRole('button', { name: 'Copilot assistant' }))
+    expect(onModeChange).toHaveBeenCalledWith('dock')
+    expect(onOpenChange).toHaveBeenCalledWith(true)
+    // Still controlled, so the host decides.
+    expect(screen.queryByRole('complementary')).toBeNull()
+  })
+
+  it('does not report an open change when the mode moves between dock and full', () => {
+    const onModeChange = vi.fn()
+    const onOpenChange = vi.fn()
+    renderDock({ mode: 'dock', onModeChange, onOpenChange })
+    fireEvent.click(screen.getByRole('button', { name: 'Expand' }))
+    expect(onModeChange).toHaveBeenCalledWith('full')
+    expect(onOpenChange).not.toHaveBeenCalled()
+    expect(window.localStorage.getItem('netix-copilot.open')).toBeNull()
+  })
+
+  it('closes the threads popover on Escape and on a click outside', () => {
+    renderDock({ defaultOpen: true, showThreads: true })
+    const trigger = screen.getByRole('button', { name: 'Conversations' })
+    expect(trigger.getAttribute('aria-expanded')).toBe('false')
+    fireEvent.click(trigger)
+    expect(screen.getByRole('dialog', { name: 'Conversations' })).toBeTruthy()
+    expect(trigger.getAttribute('aria-expanded')).toBe('true')
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+
+    fireEvent.click(trigger)
+    fireEvent.mouseDown(screen.getByRole('dialog'))
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    fireEvent.mouseDown(document.body)
+    expect(screen.queryByRole('dialog')).toBeNull()
+
+    fireEvent.click(trigger)
+    fireEvent.click(trigger)
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 })
