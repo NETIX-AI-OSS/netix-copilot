@@ -66,13 +66,20 @@ export type { SseFrame } from './sse'
 export { readSseStream, SseParser } from './sse'
 export type { SseEndpoints, SseTransportConfig } from './sse-transport'
 export { DEFAULT_SSE_ENDPOINTS, SseTransport } from './sse-transport'
-export type { CopilotRunRow } from './transcript'
-export { transcriptFromRequest, turnFromRow } from './transcript'
+export type { CopilotRunRow, RebuiltRun } from './transcript'
+export {
+  logSteps,
+  readPlanOutput,
+  rebuildRun,
+  transcriptFromRequest,
+  turnFromRow,
+} from './transcript'
 export type {
   ConsumeRunOptions,
   CopilotTranscriptTurn,
   CopilotTransport,
   CreatedTurn,
+  ThreadPatch,
   TransportMode,
   TransportName,
 } from './types'

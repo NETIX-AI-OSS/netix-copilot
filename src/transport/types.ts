@@ -54,6 +54,15 @@ export interface CopilotTransport {
   // contract itself, so that giving up on a transport for the life of a tab never rests on how one
   // request happened to fail. Optional for the same reason fetchThread is.
   isDeployed?(signal?: AbortSignal): Promise<boolean>
+  // Thread housekeeping the history rail needs. Only the copilot contract serves them
+  // (PATCH / DELETE /api/copilot-conversation/{id}/); the agentic resource has no thread store.
+  updateThread?(threadId: string, patch: ThreadPatch, signal?: AbortSignal): Promise<CopilotThread>
+  deleteThread?(threadId: string, signal?: AbortSignal): Promise<void>
+}
+
+export interface ThreadPatch {
+  title?: string
+  isPinned?: boolean
 }
 
 const TERMINAL_EVENTS = new Set(['done', 'error', 'cancelled'])

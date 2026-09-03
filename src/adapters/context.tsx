@@ -151,12 +151,51 @@ export function useCopilotEnabled(): boolean {
 export function useCopilotSend(): (prompt: string) => void {
   const { engine, adapters } = useCopilotContext()
   return (prompt: string) => {
-    const { threadId } = engine.getSnapshot()
+    const { threadId, contextEnabled } = engine.getSnapshot()
     const { display, wire } = resolveCopilotPrompt(prompt, adapters.transformPrompt, {
       pageContext: adapters.pageContext,
       isFirstMessage: threadId === undefined,
+      includeContext: contextEnabled,
       ...(threadId === undefined ? {} : { threadId }),
     })
     void engine.send(display, buildScope(adapters.pageContext), { wireText: wire })
+  }
+}
+
+export interface CopilotThreadActions {
+  rename: (threadId: string, title: string) => Promise<void>
+  pin: (threadId: string, on: boolean) => Promise<void>
+  remove: (threadId: string) => Promise<void>
+}
+
+// The history rail's kebab, bound to the engine. The engine already reverts its optimistic list
+// edit when the backend refuses, so a failure here is logged and never thrown at a click handler.
+export function useCopilotThreadActions(): CopilotThreadActions {
+  const { engine, adapters, config } = useCopilotContext()
+  const logger = adapters.logger ?? config.logger
+  return useMemo(() => {
+    const guarded = (label: string, work: Promise<void>) =>
+      work.catch((error: unknown) => logger?.warn(`netix-copilot: ${label} failed`, error))
+    return {
+      rename: (threadId, title) => guarded('rename', engine.updateThread(threadId, { title })),
+      pin: (threadId, on) => guarded('pin', engine.updateThread(threadId, { isPinned: on })),
+      remove: (threadId) => guarded('delete', engine.deleteThread(threadId)),
+    }
+  }, [engine, logger])
+}
+
+// Ask the same question again as a new turn on the same thread. The transcript is server-owned,
+// so the earlier answer stays; the wire text is reused verbatim so the backend sees exactly what
+// it saw the first time.
+export function useCopilotRegenerate(): (turnId: string) => void {
+  const { engine, adapters } = useCopilotContext()
+  return (turnId: string) => {
+    const turn = engine.getSnapshot().turns.find((entry) => entry.id === turnId)
+    if (!turn) return
+    void engine.send(
+      turn.prompt,
+      buildScope(adapters.pageContext),
+      turn.wirePrompt === undefined ? undefined : { wireText: turn.wirePrompt },
+    )
   }
 }

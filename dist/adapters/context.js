@@ -10,6 +10,8 @@ exports.useCopilotRun = useCopilotRun;
 exports.useCopilotModelTier = useCopilotModelTier;
 exports.useCopilotEnabled = useCopilotEnabled;
 exports.useCopilotSend = useCopilotSend;
+exports.useCopilotThreadActions = useCopilotThreadActions;
+exports.useCopilotRegenerate = useCopilotRegenerate;
 const jsx_runtime_1 = require("react/jsx-runtime");
 const react_1 = require("react");
 const engine_1 = require("../runtime/engine");
@@ -88,12 +90,39 @@ function useCopilotEnabled() {
 function useCopilotSend() {
     const { engine, adapters } = useCopilotContext();
     return (prompt) => {
-        const { threadId } = engine.getSnapshot();
+        const { threadId, contextEnabled } = engine.getSnapshot();
         const { display, wire } = (0, types_1.resolveCopilotPrompt)(prompt, adapters.transformPrompt, {
             pageContext: adapters.pageContext,
             isFirstMessage: threadId === undefined,
+            includeContext: contextEnabled,
             ...(threadId === undefined ? {} : { threadId }),
         });
         void engine.send(display, (0, types_1.buildScope)(adapters.pageContext), { wireText: wire });
+    };
+}
+// The history rail's kebab, bound to the engine. The engine already reverts its optimistic list
+// edit when the backend refuses, so a failure here is logged and never thrown at a click handler.
+function useCopilotThreadActions() {
+    const { engine, adapters, config } = useCopilotContext();
+    const logger = adapters.logger ?? config.logger;
+    return (0, react_1.useMemo)(() => {
+        const guarded = (label, work) => work.catch((error) => logger?.warn(`netix-copilot: ${label} failed`, error));
+        return {
+            rename: (threadId, title) => guarded('rename', engine.updateThread(threadId, { title })),
+            pin: (threadId, on) => guarded('pin', engine.updateThread(threadId, { isPinned: on })),
+            remove: (threadId) => guarded('delete', engine.deleteThread(threadId)),
+        };
+    }, [engine, logger]);
+}
+// Ask the same question again as a new turn on the same thread. The transcript is server-owned,
+// so the earlier answer stays; the wire text is reused verbatim so the backend sees exactly what
+// it saw the first time.
+function useCopilotRegenerate() {
+    const { engine, adapters } = useCopilotContext();
+    return (turnId) => {
+        const turn = engine.getSnapshot().turns.find((entry) => entry.id === turnId);
+        if (!turn)
+            return;
+        void engine.send(turn.prompt, (0, types_1.buildScope)(adapters.pageContext), turn.wirePrompt === undefined ? undefined : { wireText: turn.wirePrompt });
     };
 }

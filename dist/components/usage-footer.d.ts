@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import type { TransportName } from '../transport/types';
-import type { CopilotUsage } from '../types';
-import { type ModelTier } from '../types';
+import type { CopilotUsage, ModelTier } from '../types';
 export interface UsageFooterProps {
     usage?: CopilotUsage;
     transport?: TransportName;

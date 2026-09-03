@@ -149,26 +149,30 @@ function renderLines(lines, keyPrefix) {
             : [...rendered, (0, jsx_runtime_1.jsx)("br", {}, `${keyPrefix}-br-${position}`)];
     });
 }
-function Markdown({ text }) {
+function Markdown({ text, streaming = false }) {
     const blocks = parseBlocks(text);
-    return ((0, jsx_runtime_1.jsx)(jsx_runtime_1.Fragment, { children: blocks.map((block) => {
+    const caret = streaming ? (0, jsx_runtime_1.jsx)("span", { className: 'nxcp-caret', "aria-hidden": 'true' }) : null;
+    if (blocks.length === 0)
+        return caret;
+    return ((0, jsx_runtime_1.jsx)(jsx_runtime_1.Fragment, { children: blocks.map((block, index) => {
+            const tail = index === blocks.length - 1 ? caret : null;
             switch (block.kind) {
                 case 'heading': {
                     const Tag = ['h1', 'h2', 'h3'][block.level - 1] ?? 'h3';
-                    return (0, jsx_runtime_1.jsx)(Tag, { children: renderInline(block.text, block.key) }, block.key);
+                    return ((0, jsx_runtime_1.jsxs)(Tag, { children: [renderInline(block.text, block.key), tail] }, block.key));
                 }
                 case 'code':
-                    return ((0, jsx_runtime_1.jsx)("pre", { "data-closed": block.closed ? 'true' : 'false', children: (0, jsx_runtime_1.jsx)("code", { ...(block.language ? { 'data-language': block.language } : {}), children: block.lines.join('\n') }) }, block.key));
+                    return ((0, jsx_runtime_1.jsxs)("pre", { "data-closed": block.closed ? 'true' : 'false', children: [(0, jsx_runtime_1.jsx)("code", { ...(block.language ? { 'data-language': block.language } : {}), children: block.lines.join('\n') }), tail] }, block.key));
                 case 'list': {
-                    const items = block.items.map((item, position) => ((0, jsx_runtime_1.jsx)("li", { children: renderInline(item, `${block.key}-${position}`) }, `${block.key}-${position}`)));
+                    const items = block.items.map((item, position) => ((0, jsx_runtime_1.jsxs)("li", { children: [renderInline(item, `${block.key}-${position}`), position === block.items.length - 1 ? tail : null] }, `${block.key}-${position}`)));
                     return block.ordered ? ((0, jsx_runtime_1.jsx)("ol", { children: items }, block.key)) : ((0, jsx_runtime_1.jsx)("ul", { children: items }, block.key));
                 }
                 case 'quote':
-                    return (0, jsx_runtime_1.jsx)("blockquote", { children: renderLines(block.lines, block.key) }, block.key);
+                    return ((0, jsx_runtime_1.jsxs)("blockquote", { children: [renderLines(block.lines, block.key), tail] }, block.key));
                 case 'rule':
-                    return (0, jsx_runtime_1.jsx)("hr", {}, block.key);
+                    return ((0, jsx_runtime_1.jsxs)(react_1.Fragment, { children: [(0, jsx_runtime_1.jsx)("hr", {}), tail] }, block.key));
                 default:
-                    return ((0, jsx_runtime_1.jsx)("p", { children: (0, jsx_runtime_1.jsx)(react_1.Fragment, { children: renderLines(block.lines, block.key) }) }, block.key));
+                    return ((0, jsx_runtime_1.jsxs)("p", { children: [renderLines(block.lines, block.key), tail] }, block.key));
             }
         }) }));
 }

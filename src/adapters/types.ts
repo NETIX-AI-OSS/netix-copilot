@@ -54,6 +54,9 @@ export interface CopilotPromptContext {
   // True for the message that opens a thread. Hosts usually scope only that one, because a
   // reply lands on the same backend row and inherits whatever scope opened it.
   isFirstMessage: boolean
+  // False when the user switched the composer's page-context chip off for this send. Absent
+  // means included, so a host transform written before the chip existed keeps its behaviour.
+  includeContext?: boolean
 }
 
 // Returning a bare string rewrites the wire text and leaves the display text alone.
@@ -64,23 +67,45 @@ export type CopilotPromptTransform = (
 
 // Theme is passed as plain tokens and applied as CSS custom properties, so the SDK works
 // identically under Tailwind 3 (viz-ui, cafm-v2-ui) and Tailwind 4 (prism-ui) and needs no
-// stylesheet import in the host.
+// stylesheet import in the host. Every token has a default; a host sets what it has.
 export interface CopilotThemeTokens {
   colorScheme?: 'light' | 'dark'
+  // Surfaces: the card itself, then the two quieter fills used inside it (trace card, composer
+  // box, chips). `surfaceMuted` is the older name for `surface2` and still applies.
   surface?: string
   surfaceMuted?: string
+  surface2?: string
+  surface3?: string
   border?: string
+  borderStrong?: string
   text?: string
   textMuted?: string
+  textTertiary?: string
   accent?: string
   accentText?: string
+  accentSubtle?: string
+  // The CAFM AI lane colour on agent cards; NETIX.AI lanes use the accent.
+  domainCafm?: string
   danger?: string
   success?: string
   warning?: string
+  // `radius` remains the card radius; the finer scale is for controls, chips and rows.
   radius?: string
+  radiusSm?: string
+  radiusMd?: string
+  radiusLg?: string
+  radiusPill?: string
   fontFamily?: string
   monoFontFamily?: string
+  // `shadow` remains the dock elevation; `elev1..3` are the finer scale (dark hosts pass inset
+  // borders here instead of shadows, as the NETIX tokens do).
   shadow?: string
+  elev1?: string
+  elev2?: string
+  elev3?: string
+  focusRing?: string
+  motionFast?: string
+  motionBase?: string
 }
 
 export interface CopilotChartRenderContext {
@@ -91,6 +116,21 @@ export interface CopilotChartRenderContext {
 export interface CopilotMarkdownRenderContext {
   // True while the text is still growing, so a host renderer can skip expensive work.
   streaming: boolean
+}
+
+export interface CopilotNotification {
+  message: string
+  tone?: 'info' | 'error'
+  action?: { label: string; onSelect: () => void }
+}
+
+// Human labels for tool and specialist names, keyed by the raw ml-engine name
+// ('data_query_retrieve', 'FacilitiesAgent' or 'call_facilities_agent'). Anything absent falls
+// back to the `copilot.tool.*` / `copilot.agent.*` translation keys, then to a sentence-cased
+// version of the raw name.
+export interface CopilotLabels {
+  tools?: Record<string, string>
+  agents?: Record<string, string>
 }
 
 export interface CopilotAdapters {
@@ -110,6 +150,12 @@ export interface CopilotAdapters {
   transformPrompt?: CopilotPromptTransform
   // Called when the assistant offers a link into the host app.
   onNavigate?: (href: string) => void
+  // Route the SDK's small confirmations (copied, exported, deleted) through the host's toaster.
+  // Without it the SDK shows its own bottom-centre pill.
+  notify?: (notification: CopilotNotification) => void
+  labels?: CopilotLabels
+  // Starter prompts for an empty conversation, when the host does not pass them per panel.
+  quickPrompts?: readonly string[]
   logger?: {
     warn: (message: string, detail?: unknown) => void
     error: (message: string, detail?: unknown) => void

@@ -28,24 +28,41 @@ export interface CopilotPromptContext {
     pageContext: CopilotPageContext;
     threadId?: string;
     isFirstMessage: boolean;
+    includeContext?: boolean;
 }
 export type CopilotPromptTransform = (prompt: string, context: CopilotPromptContext) => string | CopilotPrompt;
 export interface CopilotThemeTokens {
     colorScheme?: 'light' | 'dark';
     surface?: string;
     surfaceMuted?: string;
+    surface2?: string;
+    surface3?: string;
     border?: string;
+    borderStrong?: string;
     text?: string;
     textMuted?: string;
+    textTertiary?: string;
     accent?: string;
     accentText?: string;
+    accentSubtle?: string;
+    domainCafm?: string;
     danger?: string;
     success?: string;
     warning?: string;
     radius?: string;
+    radiusSm?: string;
+    radiusMd?: string;
+    radiusLg?: string;
+    radiusPill?: string;
     fontFamily?: string;
     monoFontFamily?: string;
     shadow?: string;
+    elev1?: string;
+    elev2?: string;
+    elev3?: string;
+    focusRing?: string;
+    motionFast?: string;
+    motionBase?: string;
 }
 export interface CopilotChartRenderContext {
     height: number;
@@ -53,6 +70,18 @@ export interface CopilotChartRenderContext {
 }
 export interface CopilotMarkdownRenderContext {
     streaming: boolean;
+}
+export interface CopilotNotification {
+    message: string;
+    tone?: 'info' | 'error';
+    action?: {
+        label: string;
+        onSelect: () => void;
+    };
+}
+export interface CopilotLabels {
+    tools?: Record<string, string>;
+    agents?: Record<string, string>;
 }
 export interface CopilotAdapters {
     pageContext: CopilotPageContext;
@@ -63,6 +92,9 @@ export interface CopilotAdapters {
     renderMarkdown?: (markdown: string, context: CopilotMarkdownRenderContext) => ReactNode;
     transformPrompt?: CopilotPromptTransform;
     onNavigate?: (href: string) => void;
+    notify?: (notification: CopilotNotification) => void;
+    labels?: CopilotLabels;
+    quickPrompts?: readonly string[];
     logger?: {
         warn: (message: string, detail?: unknown) => void;
         error: (message: string, detail?: unknown) => void;

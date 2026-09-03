@@ -32,6 +32,12 @@ export interface CopilotTransport {
     listThreads(signal?: AbortSignal): Promise<CopilotThread[]>;
     fetchThread?(threadId: string, signal?: AbortSignal): Promise<CopilotTranscriptTurn[]>;
     isDeployed?(signal?: AbortSignal): Promise<boolean>;
+    updateThread?(threadId: string, patch: ThreadPatch, signal?: AbortSignal): Promise<CopilotThread>;
+    deleteThread?(threadId: string, signal?: AbortSignal): Promise<void>;
+}
+export interface ThreadPatch {
+    title?: string;
+    isPinned?: boolean;
 }
 export declare function isTerminalEvent(enveloped: EnvelopedEvent): boolean;
 export declare class NotStreamableError extends Error {

@@ -23,6 +23,7 @@ import type {
   CopilotTranscriptTurn,
   CopilotTransport,
   CreatedTurn,
+  ThreadPatch,
   TransportName,
 } from './types'
 import {
@@ -41,6 +42,7 @@ export interface SseEndpoints {
   cancelTurn: string
   approval: string
   threads: string
+  threadDetail: string
   threadTurns: string
 }
 
@@ -52,6 +54,7 @@ export const DEFAULT_SSE_ENDPOINTS: SseEndpoints = {
   cancelTurn: '/api/copilot-turn/{turnId}/cancel/',
   approval: '/api/copilot-turn/{turnId}/steps/{stepId}/approval/',
   threads: '/api/copilot-conversation/',
+  threadDetail: '/api/copilot-conversation/{threadId}/',
   threadTurns: '/api/copilot-turn/?conversation={threadId}',
 }
 
@@ -82,6 +85,42 @@ function readString(source: Record<string, unknown>, keys: string[]): string | u
     if (typeof value === 'number' && Number.isFinite(value)) return String(value)
   }
   return undefined
+}
+
+function readTimestamp(source: Record<string, unknown>, keys: string[]): number | undefined {
+  const raw = readString(source, keys)
+  const parsed = raw === undefined ? Number.NaN : Date.parse(raw)
+  return Number.isFinite(parsed) ? parsed : undefined
+}
+
+// One copilot-conversation row, as the list and the detail both serve it.
+function threadFromRow(row: Record<string, unknown>): CopilotThread {
+  const thread: CopilotThread = {
+    id: readString(row, ['id', 'thread_id', 'threadId']) ?? '',
+    title: readString(row, ['title', 'name', 'summary']) ?? 'Untitled',
+    updatedAt:
+      readTimestamp(row, [
+        'last_activity_at',
+        'updated_on',
+        'updated_at',
+        'updatedAt',
+        'created_on',
+        'created_at',
+      ]) ?? Date.now(),
+  }
+  const count = row.message_count ?? row.messageCount ?? row.turn_count
+  if (typeof count === 'number') thread.messageCount = count
+  const modelTier = readString(row, ['model_tier', 'modelTier'])
+  if (modelTier === 'base' || modelTier === 'high' || modelTier === 'max') {
+    thread.modelTier = modelTier
+  }
+  const isPinned = row.is_pinned ?? row.isPinned
+  if (typeof isPinned === 'boolean') thread.isPinned = isPinned
+  const surface = readString(row, ['surface', 'conversation_surface'])
+  if (surface !== undefined) thread.surface = surface
+  const createdAt = readTimestamp(row, ['created_on', 'created_at', 'createdAt'])
+  if (createdAt !== undefined) thread.createdAt = createdAt
+  return thread
 }
 
 export class SseTransport implements CopilotTransport {
@@ -171,29 +210,37 @@ export class SseTransport implements CopilotTransport {
       : isRecord(payload) && Array.isArray(payload.results)
         ? payload.results
         : []
-    return rows.filter(isRecord).map((row) => {
-      const updatedRaw = readString(row, [
-        'last_activity_at',
-        'updated_on',
-        'updated_at',
-        'updatedAt',
-        'created_on',
-        'created_at',
-      ])
-      const parsed = updatedRaw === undefined ? Number.NaN : Date.parse(updatedRaw)
-      const thread: CopilotThread = {
-        id: readString(row, ['id', 'thread_id', 'threadId']) ?? '',
-        title: readString(row, ['title', 'name', 'summary']) ?? 'Untitled',
-        updatedAt: Number.isFinite(parsed) ? parsed : Date.now(),
-      }
-      const count = row.message_count ?? row.messageCount ?? row.turn_count
-      if (typeof count === 'number') thread.messageCount = count
-      const modelTier = readString(row, ['model_tier', 'modelTier'])
-      if (modelTier === 'base' || modelTier === 'high' || modelTier === 'max') {
-        thread.modelTier = modelTier
-      }
-      return thread
+    return rows.filter(isRecord).map(threadFromRow)
+  }
+
+  // Rename or pin a conversation. ConversationSerializer exposes `title` and `is_pinned` as its
+  // writable fields and answers with the whole row, which is what the rail shows next.
+  async updateThread(
+    threadId: string,
+    patch: ThreadPatch,
+    signal?: AbortSignal,
+  ): Promise<CopilotThread> {
+    const body: JsonObject = {}
+    if (patch.title !== undefined) body.title = patch.title
+    if (patch.isPinned !== undefined) body.is_pinned = patch.isPinned
+    const payload = await requestJson<unknown>(this.config, this.threadPath(threadId), {
+      method: 'PATCH',
+      body,
+      ...(signal ? { signal } : {}),
     })
+    if (!isRecord(payload)) throw new Error('Copilot thread update returned an unexpected payload.')
+    return threadFromRow(payload)
+  }
+
+  async deleteThread(threadId: string, signal?: AbortSignal): Promise<void> {
+    await request(this.config, this.threadPath(threadId), {
+      method: 'DELETE',
+      ...(signal ? { signal } : {}),
+    })
+  }
+
+  private threadPath(threadId: string): string {
+    return fillTemplate(this.endpoints.threadDetail, { threadId: encodeURIComponent(threadId) })
   }
 
   // A thread read that 404s means this cluster serves no thread store, which is an empty

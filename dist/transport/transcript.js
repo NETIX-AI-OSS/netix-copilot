@@ -15,6 +15,9 @@ exports.readStepId = readStepId;
 exports.readStepTitle = readStepTitle;
 exports.planSteps = planSteps;
 exports.logStep = logStep;
+exports.logSteps = logSteps;
+exports.readPlanOutput = readPlanOutput;
+exports.rebuildRun = rebuildRun;
 exports.mergeSteps = mergeSteps;
 exports.readRunSummary = readRunSummary;
 exports.mapUsage = mapUsage;
@@ -25,6 +28,7 @@ exports.timestampOf = timestampOf;
 exports.runFromRow = runFromRow;
 exports.transcriptFromRequest = transcriptFromRequest;
 exports.turnFromRow = turnFromRow;
+const trace_model_1 = require("../runtime/trace-model");
 const result_data_1 = require("./result-data");
 // service/models.py StatusChoices.
 exports.AGENTIC_STATUS = {
@@ -90,27 +94,163 @@ const PLAN_STATUSES = {
 function planStatus(value) {
     return typeof value === 'string' ? (PLAN_STATUSES[value] ?? 'pending') : 'pending';
 }
+function readNumber(value) {
+    return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+// The lineage and timing a newer ml-engine persists on plan_trace and sub_execution_log entries.
+function lineageOf(entry) {
+    const parentId = entry.parent_call_id ?? entry.parentCallId;
+    const depth = readNumber(entry.depth);
+    const startedAt = readNumber(entry.started_at ?? entry.startedAt);
+    const finishedAt = readNumber(entry.finished_at ?? entry.finishedAt);
+    const durationMs = readNumber(entry.duration_ms ?? entry.durationMs);
+    return {
+        ...(typeof entry.agent === 'string' ? { agent: entry.agent } : {}),
+        ...(typeof parentId === 'string' && parentId !== '' ? { parentId } : {}),
+        ...(depth === undefined ? {} : { depth }),
+        ...(startedAt === undefined ? {} : { startedAt }),
+        ...(finishedAt === undefined ? {} : { finishedAt }),
+        ...(durationMs === undefined ? {} : { durationMs }),
+    };
+}
+// A `call_*_agent` entry is a specialist delegation: its arguments carry the orchestrator's task,
+// and the stored output names the specialist class that ran it.
+function withKind(step, entry) {
+    if (!(0, trace_model_1.isAgentStep)(step))
+        return { ...step, kind: 'tool' };
+    const args = isRecord(entry.arguments) ? entry.arguments : {};
+    const output = isRecord(entry.output) ? entry.output : {};
+    const task = typeof args.task === 'string' && args.task !== '' ? args.task : undefined;
+    const feedback = typeof args.feedback === 'string' && args.feedback !== '' ? args.feedback : undefined;
+    return {
+        ...step,
+        kind: 'agent',
+        title: task ?? step.title,
+        ...(typeof output.specialist === 'string' ? { agent: output.specialist } : {}),
+        ...(task === undefined ? {} : { task }),
+        ...(feedback === undefined ? {} : { feedback }),
+    };
+}
 function planSteps(plan) {
-    return plan.filter(isRecord).map((entry, index) => {
+    return plan
+        .filter(isRecord)
+        .filter((entry) => entry.tool !== trace_model_1.PLAN_TOOL)
+        .map((entry, index) => {
         const summary = summarizeArguments(entry.arguments);
-        return {
+        return withKind({
             id: readStepId(entry, index),
             title: readStepTitle(entry, index),
             status: planStatus(entry.status),
             ...(typeof entry.tool === 'string' ? { tool: entry.tool } : {}),
             ...(summary === undefined ? {} : { argsSummary: summary }),
             ...(typeof entry.detail === 'string' ? { detail: entry.detail } : {}),
-        };
+            ...lineageOf(entry),
+        }, entry);
     });
+}
+// How base.py sets a trace status: a stored status when there is one, otherwise a result carrying
+// `error` failed unless its approval_status says how. Keeping to that rule is what lets the log
+// entry and its plan_trace twin agree when they merge.
+function outputStatus(entry) {
+    if (typeof entry.status === 'string') {
+        const known = PLAN_STATUSES[entry.status];
+        if (known !== undefined)
+            return known;
+        if (entry.status === 'ok')
+            return 'ok';
+        if (entry.status === 'error')
+            return 'error';
+    }
+    const output = isRecord(entry.output) ? entry.output : undefined;
+    if (output === undefined || output.error === undefined)
+        return 'ok';
+    const approval = typeof output.approval_status === 'string' ? PLAN_STATUSES[output.approval_status] : undefined;
+    return approval ?? 'error';
 }
 function logStep(entry, index) {
     const summary = summarizeArguments(entry.arguments);
-    return {
+    return withKind({
         id: readStepId(entry, index),
         title: readStepTitle(entry, index),
-        status: 'ok',
+        status: outputStatus(entry),
         ...(typeof entry.tool === 'string' ? { tool: entry.tool } : {}),
         ...(summary === undefined ? {} : { argsSummary: summary }),
+        ...lineageOf(entry),
+        ...(entry.output === undefined ? {} : { output: entry.output }),
+    }, entry);
+}
+// A specialist's own tool calls, stored under the meta-tool's output. Their call_ids are the ones
+// the live step events carried, so a flat live trace re-parents rather than duplicates; an older
+// backend that stored none gets ids derived from the parent instead.
+function childSteps(parent, entry) {
+    const output = isRecord(entry.output) ? entry.output : {};
+    const log = Array.isArray(output.sub_execution_log) ? output.sub_execution_log : [];
+    const agent = typeof output.specialist === 'string' ? output.specialist : parent.agent;
+    return log.filter(isRecord).map((child, index) => {
+        const callId = child.call_id ?? child.callId;
+        const summary = summarizeArguments(child.arguments);
+        return {
+            id: typeof callId === 'string' && callId !== '' ? callId : `${parent.id}-${index}`,
+            title: readStepTitle(child, index),
+            status: outputStatus(child),
+            kind: 'tool',
+            ...(typeof child.tool === 'string' ? { tool: child.tool } : {}),
+            ...(summary === undefined ? {} : { argsSummary: summary }),
+            ...(typeof child.detail === 'string' ? { detail: child.detail } : {}),
+            ...lineageOf(child),
+            ...(agent === undefined ? {} : { agent }),
+            parentId: parent.id,
+            depth: (parent.depth ?? 0) + 1,
+            ...(child.output === undefined ? {} : { output: child.output }),
+        };
+    });
+}
+// One execution_log entry as the steps it describes: the call itself, then the specialist's
+// calls beneath it. Every path that reads a stored row nests through this one function.
+function logSteps(entry, index) {
+    const step = logStep(entry, index);
+    return step.kind === 'agent' ? [step, ...childSteps(step, entry)] : [step];
+}
+// The plan the model wrote, from the make_plan entry's stored output.
+function readPlanOutput(entry) {
+    if (entry.tool !== trace_model_1.PLAN_TOOL)
+        return undefined;
+    const output = isRecord(entry.output) ? entry.output : {};
+    const lines = Array.isArray(output.steps)
+        ? output.steps.filter((line) => typeof line === 'string')
+        : [];
+    const reasoning = typeof output.reasoning === 'string' ? output.reasoning : undefined;
+    return { ...(reasoning === undefined ? {} : { reasoning }), lines };
+}
+// ml-engine marks a direct-routed run by inserting a synthetic call_*_agent entry into plan_trace
+// under a `direct-<domain>-<pk>` call_id. It never streams and execution_log has no twin, so it
+// names the specialist for the header instead of drawing an empty card.
+const DIRECT_MARKER = /^direct-/;
+// The trace tree from a stored row: plan_trace and execution_log describe the same calls under
+// the same call_id, the make_plan entry yields the plan, and each call_*_agent entry brings its
+// specialist's calls in beneath it. Plan lines are shown as written, never as pending steps.
+function rebuildRun(row) {
+    const stored = Array.isArray(row.plan) ? row.plan : [];
+    const lines = stored.filter((line) => typeof line === 'string');
+    let plan = lines.length > 0 ? { lines } : undefined;
+    const traced = planSteps(stored);
+    const marker = traced.find((step) => step.kind === 'agent' && DIRECT_MARKER.test(step.id));
+    const steps = traced.filter((step) => step !== marker);
+    const log = (Array.isArray(row.execution_log) ? row.execution_log : []).filter(isRecord);
+    for (let index = 0; index < log.length; index += 1) {
+        const entry = log[index];
+        const planned = readPlanOutput(entry);
+        if (planned !== undefined)
+            plan = planned;
+        else
+            steps.push(...logSteps(entry, index));
+    }
+    return {
+        steps: mergeSteps(steps),
+        ...(plan === undefined ? {} : { plan }),
+        ...(marker === undefined
+            ? {}
+            : { route: 'direct', agent: (0, trace_model_1.agentKey)(marker.title) ?? marker.title }),
     };
 }
 // plan_trace and execution_log describe the same tool calls under the same call_id, so a
@@ -125,12 +265,6 @@ function mergeSteps(steps) {
             merged[index] = { ...merged[index], ...step };
     }
     return merged;
-}
-function runSteps(row) {
-    return mergeSteps([
-        ...planSteps(Array.isArray(row.plan) ? row.plan : []),
-        ...(Array.isArray(row.execution_log) ? row.execution_log : []).filter(isRecord).map(logStep),
-    ]);
 }
 // ml-engine's result_data field only populates for Responses-API shaped messages and is null for
 // every run the current agent loop produces, so the newest tool output is the real source.
@@ -147,6 +281,9 @@ function lastToolOutput(row) {
     return undefined;
 }
 function readRunSummary(row) {
+    return summarize(row, rebuildRun(row));
+}
+function summarize(row, { steps, plan }) {
     const summary = {};
     if (Array.isArray(row.tools)) {
         const tools = row.tools.filter((tool) => typeof tool === 'string');
@@ -159,6 +296,11 @@ function readRunSummary(row) {
     const resultData = (0, result_data_1.normalizeResultData)(row.result_data) ?? lastToolOutput(row);
     if (resultData !== undefined)
         summary.resultData = resultData;
+    // The stored trace rides along, so a run that streamed flat nests once it ends.
+    if (steps.length > 0)
+        summary.steps = steps;
+    if (plan !== undefined)
+        summary.plan = plan;
     return summary;
 }
 // ml-engine computes credits_remaining live and does not persist it, so it is present on a run
@@ -243,12 +385,16 @@ function runFromRow(row, idPrefix, base) {
     const usage = mapUsage(row.usage);
     const error = row.error?.trim();
     const text = base.text === '' ? (row.response_text?.trim() ?? '') : base.text;
+    const rebuilt = rebuildRun(row);
+    const summary = summarize(row, rebuilt);
     return {
         ...base,
-        ...readRunSummary(row),
+        ...summary,
+        ...(rebuilt.route === undefined ? {} : { route: rebuilt.route }),
+        ...(rebuilt.agent === undefined ? {} : { agent: rebuilt.agent }),
         status: runStatusFrom(row.status),
-        hasPlan: Array.isArray(row.plan) && row.plan.length > 0,
-        steps: runSteps(row),
+        hasPlan: summary.plan !== undefined || (Array.isArray(row.plan) && row.plan.length > 0),
+        steps: summary.steps ?? [],
         charts: chartsFrom(row, idPrefix),
         text,
         ...(row.model ? { model: row.model } : {}),

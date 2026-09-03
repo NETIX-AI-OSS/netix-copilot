@@ -1,6 +1,6 @@
 // Public surface of netix-copilot.
 
-export type { CopilotConfig, CopilotProviderProps } from './adapters/context'
+export type { CopilotConfig, CopilotProviderProps, CopilotThreadActions } from './adapters/context'
 export {
   CopilotProvider,
   DEFAULT_COPILOT_PERMISSION,
@@ -9,14 +9,18 @@ export {
   useCopilotEnabled,
   useCopilotEngine,
   useCopilotModelTier,
+  useCopilotRegenerate,
   useCopilotRun,
   useCopilotSend,
   useCopilotState,
+  useCopilotThreadActions,
 } from './adapters/context'
 export type {
   CopilotAdapters,
   CopilotChartRenderContext,
+  CopilotLabels,
   CopilotMarkdownRenderContext,
+  CopilotNotification,
   CopilotPageContext,
   CopilotPrompt,
   CopilotPromptContext,
@@ -26,30 +30,55 @@ export type {
   TranslateFn,
 } from './adapters/types'
 export { buildScope, resolveCopilotPrompt } from './adapters/types'
+export type { AgentCardProps } from './components/agent-card'
+export { AgentCard } from './components/agent-card'
+export type { AnswerActionsProps } from './components/answer-actions'
+export { AnswerActions, groundingCounts } from './components/answer-actions'
 export type { ApprovalCardProps } from './components/approval-card'
 export { ApprovalCard } from './components/approval-card'
+export type { ArtifactCardProps } from './components/artifact-card'
+export { ArtifactCard } from './components/artifact-card'
 export type { ComposerProps } from './components/composer'
 export { Composer } from './components/composer'
-export type { CopilotDockProps } from './components/dock'
+export type { CopilotDockMode, CopilotDockProps } from './components/dock'
 export { CopilotDock } from './components/dock'
+export type { EmptyStateProps } from './components/empty-state'
+export { EmptyState, SparkIcon } from './components/empty-state'
+export type { HistoryRailProps } from './components/history-rail'
+export { HistoryRail, ThreadsPopover } from './components/history-rail'
+export type { LauncherProps } from './components/launcher'
+export { Launcher } from './components/launcher'
 export type { MarkdownProps } from './components/markdown'
 export { Markdown, parseBlocks, renderInline } from './components/markdown'
 export type { MessageViewProps } from './components/message-view'
 export { MessageView } from './components/message-view'
 export type { ModelTierSelectorProps } from './components/model-tier-selector'
 export { ModelTierSelector } from './components/model-tier-selector'
+export type { NotificationSnapshot } from './components/notify'
+export { notificationStore, setFallbackNotify, useNotify } from './components/notify'
 export type { CopilotPanelProps } from './components/panel'
 export { CopilotPanel } from './components/panel'
 export type { PlanTimelineProps } from './components/plan-timeline'
 export { PlanTimeline } from './components/plan-timeline'
+export type { ReasoningTraceProps } from './components/reasoning-trace'
+export { ReasoningTrace } from './components/reasoning-trace'
 export type { ResultTableProps } from './components/result-table'
-export { ResultTable } from './components/result-table'
+export { hasResultContent, ResultTable, toCsv } from './components/result-table'
 export type { RunBadgesProps } from './components/run-badges'
 export { RunBadges } from './components/run-badges'
+export type { GlyphKind, StatusGlyphProps } from './components/status-glyph'
+export { StatusGlyph, stepGlyph } from './components/status-glyph'
+export type { StepRowProps } from './components/step-row'
+export { StepRow } from './components/step-row'
 export type { ThreadListProps } from './components/thread-list'
 export { ThreadList } from './components/thread-list'
+export { ToastHost } from './components/toast-pill'
+export type { AgentDomain } from './components/trace-labels'
+export { agentDomain, agentLabel, formatDuration, toolLabel } from './components/trace-labels'
 export type { UsageFooterProps } from './components/usage-footer'
 export { UsageFooter } from './components/usage-footer'
+export type { NowFn } from './components/use-now'
+export { useNow, useSettled } from './components/use-now'
 export type {
   CopilotEngineOptions,
   CopilotEngineState,
@@ -66,6 +95,15 @@ export {
   isRunActive,
   isRunFinished,
 } from './runtime/run-store'
+export type { TraceNode } from './runtime/trace-model'
+export {
+  agentKey,
+  agentSteps,
+  buildTraceTree,
+  countSteps,
+  isAgentStep,
+  stepElapsedMs,
+} from './runtime/trace-model'
 export type {
   AgenticEndpoints,
   AgenticIdentity,
@@ -78,11 +116,13 @@ export type {
   CopilotTransportConfig,
   CreatedTurn,
   HttpConfig,
+  RebuiltRun,
   RunCursor,
   RunSnapshot,
   SseEndpoints,
   SseFrame,
   SseTransportConfig,
+  ThreadPatch,
   TransportMode,
   TransportName,
 } from './transport'
@@ -104,10 +144,13 @@ export {
   isRouteMissing,
   isTerminalEvent,
   isTerminalStatus,
+  logSteps,
   newIdempotencyKey,
   normalizeResultData,
   NotStreamableError,
+  readPlanOutput,
   readSseStream,
+  rebuildRun,
   SseParser,
   SseTransport,
   StreamInterruptedError,

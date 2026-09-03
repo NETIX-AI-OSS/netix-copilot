@@ -1,5 +1,9 @@
+import { act, renderHook } from '@testing-library/react'
+import type { ReactNode } from 'react'
+import { createElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
+import { CopilotProvider, useCopilotEngine, useCopilotThreadActions } from '../adapters/context'
 import type { CopilotEngineState, OnlineSource } from '../runtime/engine'
 import { browserOnlineSource, CopilotEngine } from '../runtime/engine'
 import { initialRunState } from '../runtime/run-store'
@@ -8,9 +12,11 @@ import type {
   CopilotTranscriptTurn,
   CopilotTransport,
   CreatedTurn,
+  ThreadPatch,
 } from '../transport/types'
 import { StreamInterruptedError } from '../transport/types'
-import type { EnvelopedEvent, SendTurnInput } from '../types'
+import type { CopilotThread, EnvelopedEvent, SendTurnInput } from '../types'
+import { testAdapters } from './helpers'
 
 // A transport whose runs are driven by the test rather than by a clock.
 class FakeTransport implements CopilotTransport {
@@ -23,6 +29,11 @@ class FakeTransport implements CopilotTransport {
   createError: Error | undefined
   thread: CopilotTranscriptTurn[] = []
   threadError: Error | undefined
+  threads: CopilotThread[] = []
+  updated: Array<[string, ThreadPatch]> = []
+  updateError: Error | undefined
+  deleted: string[] = []
+  deleteError: Error | undefined
   // Each consumeRun resolves through the promise the test settles.
   private pending: Array<{ resolve: () => void; reject: (error: unknown) => void }> = []
 
@@ -49,12 +60,24 @@ class FakeTransport implements CopilotTransport {
   }
 
   async listThreads() {
-    return []
+    return this.threads
   }
 
   fetchThread = async (): Promise<CopilotTranscriptTurn[]> => {
     if (this.threadError) throw this.threadError
     return this.thread
+  }
+
+  updateThread = async (threadId: string, patch: ThreadPatch): Promise<CopilotThread> => {
+    this.updated.push([threadId, patch])
+    if (this.updateError) throw this.updateError
+    const current = this.threads.find((thread) => thread.id === threadId)
+    return { id: threadId, title: 'unknown', updatedAt: 0, ...current, ...patch, updatedAt: 99 }
+  }
+
+  deleteThread = async (threadId: string): Promise<void> => {
+    this.deleted.push(threadId)
+    if (this.deleteError) throw this.deleteError
   }
 
   emit(enveloped: EnvelopedEvent, index = this.consumeCalls.length - 1): void {
@@ -564,6 +587,165 @@ describe('CopilotEngine disposal', () => {
     listener.mockClear()
     engine.dispose()
     expect(listener).not.toHaveBeenCalled()
+  })
+})
+
+describe('CopilotEngine run clock', () => {
+  it('stamps run_started with its own clock when the backend sent no start time', async () => {
+    const { engine, transport } = makeEngine({ now: () => 12345 })
+    await engine.send('hello')
+    transport.emit({ event: { type: 'run_started', turnId: 't1' } })
+    expect(engine.getSnapshot().turns[0]?.run.startedAt).toBe(12345)
+  })
+
+  it('keeps the start time a tagged backend sent', async () => {
+    const { engine, transport } = makeEngine({ now: () => 12345 })
+    await engine.send('hello')
+    transport.emit({ event: { type: 'run_started', turnId: 't1', startedAt: 1000 } })
+    expect(engine.getSnapshot().turns[0]?.run.startedAt).toBe(1000)
+  })
+})
+
+describe('CopilotEngine context chip', () => {
+  it('starts with page context included and toggles it', () => {
+    const { engine } = makeEngine()
+    expect(engine.getSnapshot().contextEnabled).toBe(true)
+    const listener = vi.fn()
+    engine.subscribe(listener)
+    engine.setContextEnabled(true)
+    expect(listener).not.toHaveBeenCalled()
+    engine.setContextEnabled(false)
+    expect(engine.getSnapshot().contextEnabled).toBe(false)
+    expect(listener).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('CopilotEngine thread housekeeping', () => {
+  const THREADS: CopilotThread[] = [
+    { id: 'th1', title: 'First', updatedAt: 1 },
+    { id: 'th2', title: 'Second', updatedAt: 2, isPinned: false },
+  ]
+
+  async function seeded(overrides = {}) {
+    const made = makeEngine(overrides)
+    made.transport.threads = THREADS
+    await made.engine.loadThreads()
+    return made
+  }
+
+  it('renames optimistically, then keeps the row the backend saved', async () => {
+    const { engine, transport } = await seeded()
+    const seen: string[] = []
+    engine.subscribe(() => seen.push(engine.getSnapshot().threads[0]?.title ?? ''))
+    await engine.updateThread('th1', { title: 'Renamed' })
+    expect(seen[0]).toBe('Renamed')
+    expect(transport.updated).toEqual([['th1', { title: 'Renamed' }]])
+    expect(engine.getSnapshot().threads[0]).toEqual({
+      id: 'th1',
+      title: 'Renamed',
+      updatedAt: 99,
+    })
+  })
+
+  it('pins in place without touching the other rows', async () => {
+    const { engine } = await seeded()
+    await engine.updateThread('th2', { isPinned: true })
+    expect(engine.getSnapshot().threads.map((thread) => [thread.id, thread.isPinned])).toEqual([
+      ['th1', undefined],
+      ['th2', true],
+    ])
+  })
+
+  it('puts the list back and rethrows when the backend refuses', async () => {
+    const warn = vi.fn()
+    const { engine, transport } = await seeded({ logger: { warn, error: vi.fn() } })
+    transport.updateError = new Error('forbidden')
+    await expect(engine.updateThread('th1', { title: 'Nope' })).rejects.toThrow('forbidden')
+    expect(engine.getSnapshot().threads).toEqual(THREADS)
+    expect(warn).toHaveBeenCalled()
+  })
+
+  it('does nothing on a transport that cannot update threads', async () => {
+    const { engine, transport } = await seeded()
+    delete (transport as Partial<FakeTransport>).updateThread
+    await expect(engine.updateThread('th1', { title: 'x' })).resolves.toBeUndefined()
+    expect(engine.getSnapshot().threads).toEqual(THREADS)
+  })
+
+  it('deletes a thread and drops it from the list', async () => {
+    const { engine, transport } = await seeded()
+    await engine.deleteThread('th2')
+    expect(transport.deleted).toEqual(['th2'])
+    expect(engine.getSnapshot().threads.map((thread) => thread.id)).toEqual(['th1'])
+  })
+
+  it('empties the panel when the open thread is the one deleted', async () => {
+    const { engine } = await seeded()
+    await engine.loadThread('th1')
+    await engine.send('a question')
+    await engine.deleteThread('th1')
+    expect(engine.getSnapshot()).toMatchObject({ turns: [], threads: [THREADS[1]] })
+    expect(engine.getSnapshot().threadId).toBeUndefined()
+  })
+
+  it('keeps the list intact when the delete is refused', async () => {
+    const { engine, transport } = await seeded()
+    transport.deleteError = new Error('gone wrong')
+    await expect(engine.deleteThread('th1')).rejects.toThrow('gone wrong')
+    expect(engine.getSnapshot().threads).toEqual(THREADS)
+  })
+})
+
+describe('useCopilotThreadActions', () => {
+  function mount(transport: FakeTransport, logger = { warn: vi.fn(), error: vi.fn() }) {
+    const wrapper = ({ children }: { children?: ReactNode }) =>
+      createElement(
+        CopilotProvider,
+        {
+          config: { baseUrl: 'https://ml.example.com' },
+          adapters: testAdapters({ logger }),
+          transport,
+        },
+        children,
+      )
+    const hook = renderHook(
+      () => ({ actions: useCopilotThreadActions(), engine: useCopilotEngine() }),
+      {
+        wrapper,
+      },
+    )
+    return { ...hook, logger }
+  }
+
+  it('binds rename, pin and remove to the engine', async () => {
+    const transport = new FakeTransport()
+    transport.threads = [{ id: 'th1', title: 'First', updatedAt: 1 }]
+    const { result } = mount(transport)
+    await act(() => result.current.engine.loadThreads())
+    await act(() => result.current.actions.rename('th1', 'Renamed'))
+    await act(() => result.current.actions.pin('th1', true))
+    expect(transport.updated).toEqual([
+      ['th1', { title: 'Renamed' }],
+      ['th1', { isPinned: true }],
+    ])
+    await act(() => result.current.actions.remove('th1'))
+    expect(transport.deleted).toEqual(['th1'])
+    expect(result.current.engine.getSnapshot().threads).toEqual([])
+  })
+
+  it('logs a refused action instead of throwing at the click handler', async () => {
+    const transport = new FakeTransport()
+    transport.updateError = new Error('forbidden')
+    const { result, logger } = mount(transport)
+    await expect(act(() => result.current.actions.rename('th1', 'x'))).resolves.toBeUndefined()
+    expect(logger.warn).toHaveBeenCalledWith('netix-copilot: rename failed', expect.any(Error))
+  })
+
+  it('hands back the same functions across renders', () => {
+    const { result, rerender } = mount(new FakeTransport())
+    const first = result.current.actions
+    rerender()
+    expect(result.current.actions).toBe(first)
   })
 })
 

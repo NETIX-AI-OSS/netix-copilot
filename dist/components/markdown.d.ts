@@ -28,6 +28,7 @@ type Block = (BlockBase & {
 export declare function parseBlocks(markdown: string): Block[];
 export interface MarkdownProps {
     text: string;
+    streaming?: boolean;
 }
-export declare function Markdown({ text }: MarkdownProps): ReactNode;
+export declare function Markdown({ text, streaming }: MarkdownProps): ReactNode;
 export {};

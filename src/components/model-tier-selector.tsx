@@ -32,7 +32,7 @@ export function ModelTierSelector({ className }: ModelTierSelectorProps): ReactN
       >
         {MODEL_TIERS.map((entry) => (
           <option key={entry.key} value={entry.key}>
-            {entry.label}
+            {t(`copilot.tier.${entry.key}`)}
           </option>
         ))}
       </select>

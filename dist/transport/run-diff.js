@@ -96,15 +96,24 @@ function diffRunSnapshot(snapshot, cursor, turnId) {
     const plan = Array.isArray(snapshot.plan) ? snapshot.plan : [];
     if (!cursor.planEmitted && plan.length > 0) {
         cursor.planEmitted = true;
-        emit({ type: 'plan', steps: (0, transcript_1.planSteps)(plan) });
+        // A plan_trace carries executed steps; a plan of free strings is shown as lines.
+        const lines = plan.filter((line) => typeof line === 'string');
+        emit({ type: 'plan', steps: (0, transcript_1.planSteps)(plan), ...(lines.length > 0 ? { lines } : {}) });
     }
     const log = Array.isArray(snapshot.execution_log) ? snapshot.execution_log : [];
-    // Polling only ever sees finished tool calls, so the timeline gets the completed form.
+    // Polling only ever sees finished tool calls, so the timeline gets the completed form, nested
+    // the same way a stored row rebuilds.
     for (let index = cursor.logCount; index < log.length; index += 1) {
         const entry = log[index];
         if (!isRecord(entry))
             continue;
-        emit({ type: 'step_result', step: (0, transcript_1.logStep)(entry, index) });
+        const planned = (0, transcript_1.readPlanOutput)(entry);
+        if (planned !== undefined) {
+            emit({ type: 'plan', steps: [], ...planned });
+            continue;
+        }
+        for (const step of (0, transcript_1.logSteps)(entry, index))
+            emit({ type: 'step_result', step });
     }
     cursor.logCount = log.length;
     const text = typeof snapshot.response_text === 'string' ? snapshot.response_text : '';

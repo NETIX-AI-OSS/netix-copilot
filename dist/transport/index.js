@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.StreamInterruptedError = exports.NotStreamableError = exports.newIdempotencyKey = exports.isTerminalEvent = exports.turnFromRow = exports.transcriptFromRequest = exports.SseTransport = exports.DEFAULT_SSE_ENDPOINTS = exports.SseParser = exports.readSseStream = exports.isTerminalStatus = exports.encodeCursor = exports.diffRunSnapshot = exports.decodeCursor = exports.normalizeResultData = exports.formatResultCell = exports.isRouteMissing = exports.isResourceError = exports.CopilotHttpError = exports.decodePolledEvent = exports.decodeFrame = exports.AutoTransport = exports.DEFAULT_AGENTIC_ENDPOINTS = exports.AgenticTransport = exports.AGENTIC_STATUS = void 0;
+exports.StreamInterruptedError = exports.NotStreamableError = exports.newIdempotencyKey = exports.isTerminalEvent = exports.turnFromRow = exports.transcriptFromRequest = exports.rebuildRun = exports.readPlanOutput = exports.logSteps = exports.SseTransport = exports.DEFAULT_SSE_ENDPOINTS = exports.SseParser = exports.readSseStream = exports.isTerminalStatus = exports.encodeCursor = exports.diffRunSnapshot = exports.decodeCursor = exports.normalizeResultData = exports.formatResultCell = exports.isRouteMissing = exports.isResourceError = exports.CopilotHttpError = exports.decodePolledEvent = exports.decodeFrame = exports.AutoTransport = exports.DEFAULT_AGENTIC_ENDPOINTS = exports.AgenticTransport = exports.AGENTIC_STATUS = void 0;
 exports.createTransport = createTransport;
 const agentic_transport_1 = require("./agentic-transport");
 const auto_transport_1 = require("./auto-transport");
@@ -66,6 +66,9 @@ var sse_transport_2 = require("./sse-transport");
 Object.defineProperty(exports, "DEFAULT_SSE_ENDPOINTS", { enumerable: true, get: function () { return sse_transport_2.DEFAULT_SSE_ENDPOINTS; } });
 Object.defineProperty(exports, "SseTransport", { enumerable: true, get: function () { return sse_transport_2.SseTransport; } });
 var transcript_1 = require("./transcript");
+Object.defineProperty(exports, "logSteps", { enumerable: true, get: function () { return transcript_1.logSteps; } });
+Object.defineProperty(exports, "readPlanOutput", { enumerable: true, get: function () { return transcript_1.readPlanOutput; } });
+Object.defineProperty(exports, "rebuildRun", { enumerable: true, get: function () { return transcript_1.rebuildRun; } });
 Object.defineProperty(exports, "transcriptFromRequest", { enumerable: true, get: function () { return transcript_1.transcriptFromRequest; } });
 Object.defineProperty(exports, "turnFromRow", { enumerable: true, get: function () { return transcript_1.turnFromRow; } });
 var types_1 = require("./types");

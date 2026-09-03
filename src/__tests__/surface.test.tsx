@@ -1,6 +1,6 @@
-// The three things a host lost when it adopted v0.1.0: result tables, per-message badges and
-// replayed history. Each of them renders here from a turn alone, so any host composing from the
-// exported primitives gets them without rebuilding anything.
+// The three things a host lost when it adopted v0.1.0: result tables, the run facts under an
+// answer and replayed history. Each of them renders here from a turn alone, so any host
+// composing from the exported primitives gets them without rebuilding anything.
 
 import { fireEvent, render, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest'
 import { CopilotProvider, useCopilotState } from '../adapters/context'
 import { CopilotDock } from '../components/dock'
 import { MessageView } from '../components/message-view'
+import { CopilotPanel } from '../components/panel'
 import { ThreadList } from '../components/thread-list'
 import type { CopilotTurnView } from '../runtime/engine'
 import { initialRunState } from '../runtime/run-store'
@@ -107,6 +108,7 @@ describe('result tables', () => {
   it('renders nothing at all for a scalar with no value', () => {
     mount(<MessageView turn={turn({ resultData: { columns: [], rows: [], raw: null } })} />)
     expect(screen.queryByText('Result')).toBeNull()
+    expect(document.querySelector('.nxcp-artifact')).toBeNull()
   })
 
   it('renders a missing cell as blank rather than as undefined', () => {
@@ -129,46 +131,90 @@ describe('result tables', () => {
   })
 })
 
-describe('run badges', () => {
-  it('reports the status, the time it took and the tools it used', () => {
+describe('answer strip', () => {
+  it('reports the tools the run used and the time it took', () => {
     mount(
       <MessageView turn={turn({ executionMs: 4250, tools: ['sql_query', 'generate_chart'] })} />,
     )
-    expect(screen.getByText('Completed')).toBeTruthy()
-    expect(screen.getByText('4.3s')).toBeTruthy()
-    expect(screen.getByText('sql_query')).toBeTruthy()
-    expect(screen.getByText('generate_chart')).toBeTruthy()
+    expect(screen.getByText('Used 2 tools · 4.3 s')).toBeTruthy()
   })
 
-  it('marks a failed run as failed', () => {
+  it('counts the specialists the orchestrator consulted', () => {
+    mount(
+      <MessageView
+        turn={turn({
+          executionMs: 12_400,
+          tools: ['call_facilities_agent', 'realtime_data_retrieve'],
+          steps: [
+            { id: 'a1', title: 'Facilities', tool: 'call_facilities_agent', status: 'ok' },
+            { id: 'c1', title: 'live', tool: 'realtime_data_retrieve', status: 'ok' },
+          ],
+        })}
+      />,
+    )
+    expect(screen.getByText('Used 2 tools · 1 specialists · 12.4 s')).toBeTruthy()
+  })
+
+  it('falls back to the steps that ran when the summary names no tools', () => {
+    mount(
+      <MessageView
+        turn={turn({
+          executionMs: 900,
+          steps: [{ id: 'c1', title: 'sql_query', tool: 'sql_query', status: 'ok' }],
+        })}
+      />,
+    )
+    expect(screen.getByText('Used 1 tools · 0.9 s')).toBeTruthy()
+  })
+
+  it('marks a failed run as failed without claiming grounding', () => {
     mount(
       <MessageView
         turn={turn({ status: 'error', error: { message: 'boom' }, executionMs: 900 })}
       />,
     )
-    expect(screen.getByText('Failed')).toBeTruthy()
-    expect(screen.getByText('900ms')).toBeTruthy()
+    expect(screen.getByText('Request failed')).toBeTruthy()
+    expect(screen.getByRole('alert').textContent).toBe('boom')
+    expect(screen.queryByText(/Used /)).toBeNull()
   })
 
-  it('rounds a long run to whole seconds', () => {
-    mount(<MessageView turn={turn({ executionMs: 65_400 })} />)
-    expect(screen.getByText('65s')).toBeTruthy()
-  })
-
-  it('holds the timing back while the run is still going', () => {
-    mount(<MessageView turn={turn({ status: 'streaming', executionMs: 4250 })} />)
-    expect(screen.getByText('Running')).toBeTruthy()
-    expect(screen.queryByText('4.3s')).toBeNull()
-  })
-
-  it('shows nothing at all before a run has started', () => {
-    mount(<MessageView turn={turn({ status: 'creating' })} />)
-    expect(screen.queryByText('Starting')).toBeNull()
+  it('holds the strip back while the run is still going', () => {
+    mount(<MessageView turn={turn({ status: 'streaming', executionMs: 4250, text: 'so far' })} />)
+    expect(screen.queryByText(/Used /)).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Copy' })).toBeNull()
   })
 
   it('stays out of the way when the host renders its own chips', () => {
-    mount(<MessageView showBadges={false} turn={turn({ tools: ['sql_query'] })} />)
-    expect(screen.queryByText('sql_query')).toBeNull()
+    mount(<MessageView showBadges={false} turn={turn({ tools: ['sql_query'], executionMs: 1 })} />)
+    expect(screen.queryByText(/Used /)).toBeNull()
+  })
+})
+
+describe('empty state', () => {
+  it('renders the SDK placeholder with its tile, heading and body by default', () => {
+    mount(<CopilotPanel />)
+    expect(document.querySelector('.nxcp-empty-state .nxcp-empty-tile')).toBeTruthy()
+    expect(document.querySelector('.nxcp-empty-heading')?.textContent).toBe('Copilot')
+    expect(screen.getByText('Ask about anything on this page.').className).toBe('nxcp-empty-body')
+  })
+
+  // cafm-v2-ui and viz-ui pass block content here; it must stand in for the whole placeholder,
+  // never sit inside the SDK's heading with the SDK's body text under it.
+  it('lets a host placeholder replace the whole default block', () => {
+    mount(
+      <CopilotPanel
+        emptyState={<div data-testid='host-empty'>Build this dashboard with AI.</div>}
+        quickPrompts={['Top alarms']}
+      />,
+    )
+    const host = screen.getByTestId('host-empty')
+    expect(host.closest('.nxcp-empty-state')).toBeTruthy()
+    expect(host.closest('h3')).toBeNull()
+    expect(document.querySelector('.nxcp-empty-heading')).toBeNull()
+    expect(document.querySelector('.nxcp-empty-body')).toBeNull()
+    expect(document.querySelector('.nxcp-empty-tile')).toBeNull()
+    expect(screen.queryByText('Ask about anything on this page.')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Top alarms' }).className).toBe('nxcp-quick-prompt')
   })
 })
 
@@ -201,15 +247,15 @@ describe('history replay', () => {
     expect(await screen.findByText('earlier answer')).toBeTruthy()
     expect(screen.getByText('earlier question')).toBeTruthy()
     expect(screen.getByRole('table')).toBeTruthy()
-    expect(screen.getByText('2.0s')).toBeTruthy()
-    // Once in the replayed step timeline, once as the tool badge under the answer.
-    expect(screen.getAllByText('sql_query')).toHaveLength(2)
+    expect(screen.getByText('Used 1 tools · 2.0 s')).toBeTruthy()
   })
 
   it('says so in the dock while the transcript is still on its way', async () => {
     const transport = new QuietTransport()
     transport.hold = true
     mount(<CopilotDock open />, transport)
+    // Threads live in the header popover now, not in a strip inside the dock.
+    fireEvent.click(screen.getByRole('button', { name: 'Conversations' }))
     fireEvent.click(await screen.findByText('Earlier question'))
     expect(screen.getByText('Restoring this conversation…')).toBeTruthy()
   })
