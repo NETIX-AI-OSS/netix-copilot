@@ -62,3 +62,14 @@ export function countSteps(nodes: readonly TraceNode[]): number {
   for (const node of nodes) total += 1 + countSteps(node.children)
   return total
 }
+
+// How long a step took, or has been running for when `nowMs` is supplied. Prefers the backend's
+// own duration; the wall-clock pair is the fallback, and a live figure is only ever derived from
+// a start the backend reported.
+export function stepElapsedMs(step: PlanStep, nowMs?: number): number | undefined {
+  if (step.durationMs !== undefined) return step.durationMs
+  if (step.startedAt === undefined) return undefined
+  if (step.finishedAt !== undefined) return Math.max(0, step.finishedAt - step.startedAt)
+  if (step.status === 'running' && nowMs !== undefined) return Math.max(0, nowMs - step.startedAt)
+  return undefined
+}
