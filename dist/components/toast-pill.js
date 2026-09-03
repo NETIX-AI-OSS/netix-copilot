@@ -40,8 +40,9 @@ function ToastHost() {
     if (!primary)
         return null;
     const action = current?.action;
-    // The live region stays mounted while empty, or assistive tech never hears the first toast.
-    return ((0, jsx_runtime_1.jsx)("div", { className: 'nxcp-toast-region', role: 'status', "aria-live": 'polite', children: current ? ((0, jsx_runtime_1.jsxs)("div", { className: 'nxcp-toast', "data-tone": current.tone ?? 'info', children: [(0, jsx_runtime_1.jsx)("span", { children: current.message }), action ? ((0, jsx_runtime_1.jsx)("button", { type: 'button', className: 'nxcp-toast-action', onClick: () => {
+    // The live region stays mounted while empty, or assistive tech never hears the first toast. It
+    // carries no role of its own, so an empty region is not a status widget a host waits on.
+    return ((0, jsx_runtime_1.jsx)("div", { className: 'nxcp-toast-region', "aria-live": 'polite', "aria-atomic": 'true', children: current ? ((0, jsx_runtime_1.jsxs)("div", { className: 'nxcp-toast', role: 'status', "data-tone": current.tone ?? 'info', children: [(0, jsx_runtime_1.jsx)("span", { children: current.message }), action ? ((0, jsx_runtime_1.jsx)("button", { type: 'button', className: 'nxcp-toast-action', onClick: () => {
                         action.onSelect();
                         notify_1.notificationStore.dismiss();
                     }, children: action.label })) : null, (0, jsx_runtime_1.jsx)("button", { type: 'button', className: 'nxcp-toast-dismiss', "aria-label": t('copilot.toast.dismiss'), onClick: () => notify_1.notificationStore.dismiss(), children: (0, jsx_runtime_1.jsx)("svg", { width: 12, height: 12, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2.4, "aria-hidden": 'true', children: (0, jsx_runtime_1.jsx)("path", { d: 'M6 6l12 12M18 6L6 18' }) }) })] })) : null }));

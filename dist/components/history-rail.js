@@ -9,6 +9,8 @@ const notify_1 = require("./notify");
 const MS_DAY = 86400000;
 const MS_MINUTE = 60000;
 const TITLE_MAX = 48;
+// The surfaces ml-engine records; anything else draws no badge rather than a raw wire value.
+const SURFACES = new Set(['web', 'mobile', 'embed', 'api']);
 const GROUP_ORDER = ['pinned', 'today', 'yesterday', 'week', 'earlier'];
 function localDay(ms) {
     return new Date(ms).setHours(0, 0, 0, 0);
@@ -23,11 +25,11 @@ function groupOf(thread, now) {
     const ago = daysAgo(thread.updatedAt, now);
     return ago <= 0 ? 'today' : ago === 1 ? 'yesterday' : ago <= 6 ? 'week' : 'earlier';
 }
-function whenLabel(ms, now, t) {
+function whenLabel(ms, now, t, locale) {
     const ago = daysAgo(ms, now);
     const date = new Date(ms);
     if (ago <= 0) {
-        return date.toLocaleTimeString(undefined, {
+        return date.toLocaleTimeString(locale, {
             hour: '2-digit',
             minute: '2-digit',
             hourCycle: 'h23',
@@ -36,8 +38,8 @@ function whenLabel(ms, now, t) {
     if (ago === 1)
         return t('copilot.history.yesterday');
     if (ago <= 6)
-        return date.toLocaleDateString(undefined, { weekday: 'short' });
-    return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+        return date.toLocaleDateString(locale, { weekday: 'short' });
+    return date.toLocaleDateString(locale, { day: 'numeric', month: 'short' });
 }
 function clip(title) {
     return title.length > TITLE_MAX ? `${title.slice(0, TITLE_MAX - 1)}…` : title;
@@ -55,7 +57,7 @@ function useMinuteClock() {
     return (0, react_1.useSyncExternalStore)(subscribeMinute, minuteNow, minuteNow);
 }
 function HistoryRail({ compact = false, now: nowProp, autoLoad = true, }) {
-    const { t, logger: adapterLogger } = (0, context_1.useCopilotAdapters)();
+    const { t, locale, logger: adapterLogger } = (0, context_1.useCopilotAdapters)();
     const config = (0, context_1.useCopilotConfig)();
     const logger = adapterLogger ?? config.logger;
     const engine = (0, context_1.useCopilotEngine)();
@@ -127,7 +129,7 @@ function HistoryRail({ compact = false, now: nowProp, autoLoad = true, }) {
                         event.stopPropagation();
                         setRenameId(undefined);
                     }
-                } })) : confirmId === thread.id ? ((0, jsx_runtime_1.jsxs)("div", { className: 'nxcp-thread-confirm', role: 'group', "aria-label": t('copilot.history.confirmDelete'), children: [(0, jsx_runtime_1.jsx)("span", { children: t('copilot.history.confirmDelete') }), (0, jsx_runtime_1.jsx)("button", { type: 'button', className: 'nxcp-icon-button', "data-tone": 'danger', onClick: () => remove(thread), children: t('copilot.history.delete') }), (0, jsx_runtime_1.jsx)("button", { type: 'button', className: 'nxcp-icon-button', onClick: () => setConfirmId(undefined), children: t('copilot.history.cancel') })] })) : ((0, jsx_runtime_1.jsxs)(jsx_runtime_1.Fragment, { children: [(0, jsx_runtime_1.jsxs)("button", { type: 'button', className: 'nxcp-thread', "aria-current": active ? 'true' : undefined, onClick: () => engine.selectThread(thread.id), children: [(0, jsx_runtime_1.jsx)("span", { className: 'nxcp-thread-title', children: clip(thread.title) || t('copilot.history.untitled') }), (0, jsx_runtime_1.jsxs)("span", { className: 'nxcp-thread-meta', children: [thread.modelTier ? ((0, jsx_runtime_1.jsx)("span", { className: 'nxcp-badge', children: t(`copilot.tier.${thread.modelTier}`) })) : null, thread.surface ? (0, jsx_runtime_1.jsx)("span", { className: 'nxcp-badge', children: thread.surface }) : null, (0, jsx_runtime_1.jsx)("span", { className: 'nxcp-thread-time', children: whenLabel(thread.updatedAt, now, t) })] })] }), (0, jsx_runtime_1.jsx)("button", { type: 'button', className: 'nxcp-icon-button nxcp-thread-kebab', "aria-label": t('copilot.history.menu'), "aria-expanded": menuOpen, onClick: () => setMenuId(menuOpen ? undefined : thread.id), children: (0, jsx_runtime_1.jsxs)("svg", { width: 13, height: 13, viewBox: '0 0 24 24', fill: 'currentColor', "aria-hidden": 'true', children: [(0, jsx_runtime_1.jsx)("circle", { cx: '5', cy: '12', r: '1.7' }), (0, jsx_runtime_1.jsx)("circle", { cx: '12', cy: '12', r: '1.7' }), (0, jsx_runtime_1.jsx)("circle", { cx: '19', cy: '12', r: '1.7' })] }) }), menuOpen ? ((0, jsx_runtime_1.jsxs)("div", { role: 'group', "aria-label": t('copilot.history.menu'), className: 'nxcp-thread-menu', children: [(0, jsx_runtime_1.jsx)("button", { type: 'button', onClick: () => togglePin(thread), children: t(thread.isPinned ? 'copilot.history.unpin' : 'copilot.history.pin') }), (0, jsx_runtime_1.jsx)("button", { type: 'button', onClick: () => {
+                } })) : confirmId === thread.id ? ((0, jsx_runtime_1.jsxs)("div", { className: 'nxcp-thread-confirm', role: 'group', "aria-label": t('copilot.history.confirmDelete'), children: [(0, jsx_runtime_1.jsx)("span", { children: t('copilot.history.confirmDelete') }), (0, jsx_runtime_1.jsx)("button", { type: 'button', className: 'nxcp-icon-button', "data-tone": 'danger', onClick: () => remove(thread), children: t('copilot.history.delete') }), (0, jsx_runtime_1.jsx)("button", { type: 'button', className: 'nxcp-icon-button', onClick: () => setConfirmId(undefined), children: t('copilot.history.cancel') })] })) : ((0, jsx_runtime_1.jsxs)(jsx_runtime_1.Fragment, { children: [(0, jsx_runtime_1.jsxs)("button", { type: 'button', className: 'nxcp-thread', "aria-current": active ? 'true' : undefined, onClick: () => engine.selectThread(thread.id), children: [(0, jsx_runtime_1.jsx)("span", { className: 'nxcp-thread-title', children: clip(thread.title) || t('copilot.history.untitled') }), (0, jsx_runtime_1.jsxs)("span", { className: 'nxcp-thread-meta', children: [thread.modelTier ? ((0, jsx_runtime_1.jsx)("span", { className: 'nxcp-badge', children: t(`copilot.tier.${thread.modelTier}`) })) : null, thread.surface && SURFACES.has(thread.surface) ? ((0, jsx_runtime_1.jsx)("span", { className: 'nxcp-badge', children: t(`copilot.surface.${thread.surface}`) })) : null, (0, jsx_runtime_1.jsx)("span", { className: 'nxcp-thread-time', children: whenLabel(thread.updatedAt, now, t, locale) })] })] }), (0, jsx_runtime_1.jsx)("button", { type: 'button', className: 'nxcp-icon-button nxcp-thread-kebab', "aria-label": t('copilot.history.menu'), "aria-expanded": menuOpen, onClick: () => setMenuId(menuOpen ? undefined : thread.id), children: (0, jsx_runtime_1.jsxs)("svg", { width: 13, height: 13, viewBox: '0 0 24 24', fill: 'currentColor', "aria-hidden": 'true', children: [(0, jsx_runtime_1.jsx)("circle", { cx: '5', cy: '12', r: '1.7' }), (0, jsx_runtime_1.jsx)("circle", { cx: '12', cy: '12', r: '1.7' }), (0, jsx_runtime_1.jsx)("circle", { cx: '19', cy: '12', r: '1.7' })] }) }), menuOpen ? ((0, jsx_runtime_1.jsxs)("div", { role: 'group', "aria-label": t('copilot.history.menu'), className: 'nxcp-thread-menu', children: [(0, jsx_runtime_1.jsx)("button", { type: 'button', onClick: () => togglePin(thread), children: t(thread.isPinned ? 'copilot.history.unpin' : 'copilot.history.pin') }), (0, jsx_runtime_1.jsx)("button", { type: 'button', onClick: () => {
                                     setMenuId(undefined);
                                     setRenameValue(thread.title);
                                     setRenameId(thread.id);

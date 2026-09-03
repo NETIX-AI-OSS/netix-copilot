@@ -27,7 +27,10 @@ class FakeTransport implements CopilotTransport {
   cancelled: string[] = []
   createResult: CreatedTurn = { turnId: 't1', threadId: 'th1' }
   createError: Error | undefined
+  // Settled by the test, so a create can be held open while the panel moves elsewhere.
+  createGate: Promise<void> | undefined
   thread: CopilotTranscriptTurn[] = []
+  fetchCalls: string[] = []
   threadError: Error | undefined
   threads: CopilotThread[] = []
   updated: Array<[string, ThreadPatch]> = []
@@ -39,6 +42,7 @@ class FakeTransport implements CopilotTransport {
 
   async createTurn(input: SendTurnInput): Promise<CreatedTurn> {
     this.createCalls.push(input)
+    await this.createGate
     if (this.createError) throw this.createError
     return this.createResult
   }
@@ -63,7 +67,8 @@ class FakeTransport implements CopilotTransport {
     return this.threads
   }
 
-  fetchThread = async (): Promise<CopilotTranscriptTurn[]> => {
+  fetchThread = async (threadId: string): Promise<CopilotTranscriptTurn[]> => {
+    this.fetchCalls.push(threadId)
     if (this.threadError) throw this.threadError
     return this.thread
   }
@@ -394,6 +399,81 @@ describe('CopilotEngine thread transcripts', () => {
     engine.startNewThread()
     await pending
     expect(engine.getSnapshot()).toMatchObject({ turns: [], threadLoading: false })
+  })
+
+  // A click on the highlighted rail row must not abort the stream it is showing.
+  it('ignores a re-selection of the open thread mid-stream, and still switches to another', async () => {
+    const { engine, transport } = makeEngine()
+    await engine.send('hello')
+    transport.emit({ event: { type: 'run_started', turnId: 't1' } })
+    transport.emit({ event: { type: 'message_delta', text: 'partial' } })
+    engine.selectThread('th1')
+    await engine.loadThread('th1')
+    expect(transport.consumeCalls[0]?.signal.aborted).toBe(false)
+    expect(transport.fetchCalls).toEqual([])
+    expect(engine.getSnapshot().turns[0]?.run).toMatchObject({
+      status: 'streaming',
+      text: 'partial',
+    })
+
+    await engine.loadThread('th2')
+    expect(transport.consumeCalls[0]?.signal.aborted).toBe(true)
+    expect(transport.fetchCalls).toEqual(['th2'])
+    expect(engine.getSnapshot()).toMatchObject({ threadId: 'th2', turns: [] })
+  })
+
+  it('re-selects the open thread only when the panel holds nothing for it', async () => {
+    const { engine, transport } = makeEngine()
+    transport.thread = transcript
+    await engine.loadThread('th1')
+    await engine.loadThread('th1')
+    expect(transport.fetchCalls).toEqual(['th1'])
+    // A failed load left the panel empty, so trying again is a retry, not a reload.
+    transport.threadError = new Error('gone')
+    await engine.loadThread('th2')
+    transport.threadError = undefined
+    await engine.loadThread('th2')
+    expect(transport.fetchCalls).toEqual(['th1', 'th2', 'th2'])
+    expect(engine.getSnapshot().turns).toEqual(transcript)
+  })
+
+  // A deep link that lands while the create is in flight owns the panel; the create's thread
+  // id must not overwrite it, and its stream must not be consumed into the restored turns.
+  it('drops a create that resolves after the thread changed', async () => {
+    const warn = vi.fn()
+    const { engine, transport } = makeEngine({ logger: { warn, error: vi.fn() } })
+    let open: () => void = () => undefined
+    transport.createGate = new Promise((resolve) => {
+      open = resolve
+    })
+    transport.createResult = { turnId: 't9', threadId: 'th9' }
+    transport.thread = transcript
+    const sent = engine.send('hello')
+    await engine.loadThread('th1')
+    open()
+    await sent
+    expect(engine.getSnapshot()).toMatchObject({
+      threadId: 'th1',
+      turns: transcript,
+      sending: false,
+    })
+    expect(transport.consumeCalls).toHaveLength(0)
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('thread changed'), { turnId: 't9' })
+  })
+
+  it('drops a create that fails after the thread changed', async () => {
+    const { engine, transport } = makeEngine()
+    let open: () => void = () => undefined
+    transport.createGate = new Promise((resolve) => {
+      open = resolve
+    })
+    transport.createError = new Error('late failure')
+    transport.thread = transcript
+    const sent = engine.send('hello')
+    await engine.loadThread('th1')
+    open()
+    await sent
+    expect(engine.getSnapshot()).toMatchObject({ threadId: 'th1', turns: transcript })
   })
 })
 

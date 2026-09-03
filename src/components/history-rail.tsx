@@ -23,6 +23,8 @@ export interface HistoryRailProps {
 const MS_DAY = 86_400_000
 const MS_MINUTE = 60_000
 const TITLE_MAX = 48
+// The surfaces ml-engine records; anything else draws no badge rather than a raw wire value.
+const SURFACES = new Set(['web', 'mobile', 'embed', 'api'])
 
 type Group = 'pinned' | 'today' | 'yesterday' | 'week' | 'earlier'
 const GROUP_ORDER: readonly Group[] = ['pinned', 'today', 'yesterday', 'week', 'earlier']
@@ -42,19 +44,19 @@ function groupOf(thread: CopilotThread, now: number): Group {
   return ago <= 0 ? 'today' : ago === 1 ? 'yesterday' : ago <= 6 ? 'week' : 'earlier'
 }
 
-function whenLabel(ms: number, now: number, t: TranslateFn): string {
+function whenLabel(ms: number, now: number, t: TranslateFn, locale?: string): string {
   const ago = daysAgo(ms, now)
   const date = new Date(ms)
   if (ago <= 0) {
-    return date.toLocaleTimeString(undefined, {
+    return date.toLocaleTimeString(locale, {
       hour: '2-digit',
       minute: '2-digit',
       hourCycle: 'h23',
     })
   }
   if (ago === 1) return t('copilot.history.yesterday')
-  if (ago <= 6) return date.toLocaleDateString(undefined, { weekday: 'short' })
-  return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
+  if (ago <= 6) return date.toLocaleDateString(locale, { weekday: 'short' })
+  return date.toLocaleDateString(locale, { day: 'numeric', month: 'short' })
 }
 
 function clip(title: string): string {
@@ -81,7 +83,7 @@ export function HistoryRail({
   now: nowProp,
   autoLoad = true,
 }: HistoryRailProps): ReactNode {
-  const { t, logger: adapterLogger } = useCopilotAdapters()
+  const { t, locale, logger: adapterLogger } = useCopilotAdapters()
   const config = useCopilotConfig()
   const logger = adapterLogger ?? config.logger
   const engine = useCopilotEngine()
@@ -208,8 +210,12 @@ export function HistoryRail({
                 {thread.modelTier ? (
                   <span className='nxcp-badge'>{t(`copilot.tier.${thread.modelTier}`)}</span>
                 ) : null}
-                {thread.surface ? <span className='nxcp-badge'>{thread.surface}</span> : null}
-                <span className='nxcp-thread-time'>{whenLabel(thread.updatedAt, now, t)}</span>
+                {thread.surface && SURFACES.has(thread.surface) ? (
+                  <span className='nxcp-badge'>{t(`copilot.surface.${thread.surface}`)}</span>
+                ) : null}
+                <span className='nxcp-thread-time'>
+                  {whenLabel(thread.updatedAt, now, t, locale)}
+                </span>
               </span>
             </button>
             <button

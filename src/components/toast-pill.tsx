@@ -48,11 +48,12 @@ export function ToastHost(): ReactNode {
   if (!primary) return null
   const action = current?.action
 
-  // The live region stays mounted while empty, or assistive tech never hears the first toast.
+  // The live region stays mounted while empty, or assistive tech never hears the first toast. It
+  // carries no role of its own, so an empty region is not a status widget a host waits on.
   return (
-    <div className='nxcp-toast-region' role='status' aria-live='polite'>
+    <div className='nxcp-toast-region' aria-live='polite' aria-atomic='true'>
       {current ? (
-        <div className='nxcp-toast' data-tone={current.tone ?? 'info'}>
+        <div className='nxcp-toast' role='status' data-tone={current.tone ?? 'info'}>
           <span>{current.message}</span>
           {action ? (
             <button
