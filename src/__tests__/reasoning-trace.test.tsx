@@ -114,7 +114,8 @@ describe('ReasoningTrace header', () => {
         />,
       ),
     )
-    expect(label()).toBe('Reasoning — step 4 of 5')
+    // Two steps finished, the third is in flight; the pending chart is still to come.
+    expect(label()).toBe('Reasoning — step 3 of 5')
     expect(glyph()).toBe('ring')
   })
 

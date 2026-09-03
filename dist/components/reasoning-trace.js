@@ -13,6 +13,7 @@ const trace_labels_1 = require("./trace-labels");
 const use_now_1 = require("./use-now");
 const AUTO_COLLAPSE_MS = 600;
 const LIVE_REGION_MS = 1000;
+const FINISHED_STATUSES = new Set(['ok', 'error', 'skipped', 'rejected', 'cancelled']);
 // The run's own wall-clock figure when it reported one, else the span the step timestamps
 // cover, else what the live counter last saw. Never invented.
 function runElapsedMs(run, nowMs) {
@@ -28,7 +29,11 @@ function runElapsedMs(run, nowMs) {
 }
 function describeRun(run, tree, t, labels, nowMs) {
     const total = (0, trace_model_1.countSteps)(tree);
-    const settled = run.steps.filter((step) => step.status !== 'pending').length;
+    // "Step k of n" names the step in flight: the finished ones plus the one running. Counting
+    // every non-pending step would read "5 of 5" the moment five calls were dispatched together.
+    const finished = run.steps.filter((step) => FINISHED_STATUSES.has(step.status)).length;
+    const inFlight = run.steps.some((step) => !FINISHED_STATUSES.has(step.status) && step.status !== 'pending');
+    const settled = Math.min(total, finished + (inFlight ? 1 : 0));
     const agents = (0, trace_model_1.agentSteps)(run.steps).length;
     const awaiting = run.steps.some((step) => step.status === 'awaiting_approval');
     if (awaiting && !(0, run_store_1.isRunFinished)(run)) {
