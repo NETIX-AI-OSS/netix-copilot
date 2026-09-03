@@ -9,6 +9,7 @@ export {
   useCopilotEnabled,
   useCopilotEngine,
   useCopilotModelTier,
+  useCopilotRegenerate,
   useCopilotRun,
   useCopilotSend,
   useCopilotState,
@@ -46,6 +47,9 @@ export type { ResultTableProps } from './components/result-table'
 export { ResultTable } from './components/result-table'
 export type { RunBadgesProps } from './components/run-badges'
 export { RunBadges } from './components/run-badges'
+export { useNotify } from './components/notify'
+export type { ReasoningTraceProps } from './components/reasoning-trace'
+export { ReasoningTrace } from './components/reasoning-trace'
 export type { ThreadListProps } from './components/thread-list'
 export { ThreadList } from './components/thread-list'
 export type { UsageFooterProps } from './components/usage-footer'
@@ -66,6 +70,14 @@ export {
   isRunActive,
   isRunFinished,
 } from './runtime/run-store'
+export type { TraceNode } from './runtime/trace-model'
+export {
+  agentKey,
+  agentSteps,
+  buildTraceTree,
+  countSteps,
+  isAgentStep,
+} from './runtime/trace-model'
 export type {
   AgenticEndpoints,
   AgenticIdentity,

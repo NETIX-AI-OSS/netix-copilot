@@ -5,11 +5,15 @@
 // names. Every selector is prefixed `nxcp-` and every colour resolves from a variable the theme
 // adapter sets, so a host restyles the dock without touching this file.
 
+import { TRACE_CSS } from './styles/trace'
+import { TRANSCRIPT_CSS } from './styles/transcript'
 import { COPILOT_Z_INDEX } from './z-index'
 
 export const COPILOT_STYLE_ELEMENT_ID = 'netix-copilot-styles'
 
-export const COPILOT_CSS = `
+// Shell: tokens, launcher, dock, panel chrome, history, toast, banners, empty state, footer.
+// Transcript and trace rules live in ./styles/ so the three areas can evolve independently.
+const SHELL_CSS = `
 .nxcp-root {
   --nxcp-surface: #ffffff;
   --nxcp-surface-muted: #f5f6f8;
@@ -548,6 +552,8 @@ export const COPILOT_CSS = `
   border: 0;
 }
 `
+
+export const COPILOT_CSS = [SHELL_CSS, TRANSCRIPT_CSS, TRACE_CSS].join('\n')
 
 export function injectCopilotStyles(doc: Document = document): void {
   if (doc.getElementById(COPILOT_STYLE_ELEMENT_ID)) return

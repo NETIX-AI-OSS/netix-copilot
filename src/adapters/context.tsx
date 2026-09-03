@@ -151,12 +151,29 @@ export function useCopilotEnabled(): boolean {
 export function useCopilotSend(): (prompt: string) => void {
   const { engine, adapters } = useCopilotContext()
   return (prompt: string) => {
-    const { threadId } = engine.getSnapshot()
+    const { threadId, contextEnabled } = engine.getSnapshot()
     const { display, wire } = resolveCopilotPrompt(prompt, adapters.transformPrompt, {
       pageContext: adapters.pageContext,
       isFirstMessage: threadId === undefined,
+      includeContext: contextEnabled,
       ...(threadId === undefined ? {} : { threadId }),
     })
     void engine.send(display, buildScope(adapters.pageContext), { wireText: wire })
+  }
+}
+
+// Ask the same question again as a new turn on the same thread. The transcript is server-owned,
+// so the earlier answer stays; the wire text is reused verbatim so the backend sees exactly what
+// it saw the first time.
+export function useCopilotRegenerate(): (turnId: string) => void {
+  const { engine, adapters } = useCopilotContext()
+  return (turnId: string) => {
+    const turn = engine.getSnapshot().turns.find((entry) => entry.id === turnId)
+    if (!turn) return
+    void engine.send(
+      turn.prompt,
+      buildScope(adapters.pageContext),
+      turn.wirePrompt === undefined ? undefined : { wireText: turn.wirePrompt },
+    )
   }
 }
