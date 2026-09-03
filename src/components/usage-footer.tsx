@@ -2,8 +2,7 @@ import type { ReactNode } from 'react'
 
 import { useCopilotAdapters } from '../adapters/context'
 import type { TransportName } from '../transport/types'
-import type { CopilotUsage } from '../types'
-import { type ModelTier, modelTierMetadata } from '../types'
+import type { CopilotUsage, ModelTier } from '../types'
 
 export interface UsageFooterProps {
   usage?: CopilotUsage
@@ -28,7 +27,7 @@ export function UsageFooter({ usage, transport, modelTier }: UsageFooterProps): 
 
   // The composer already exposes the active tier. Repeat it here only when it
   // gives context to real usage data, keeping an idle composer visually quiet.
-  if (modelTier && hasUsage) items.push(modelTierMetadata(modelTier).label)
+  if (modelTier && hasUsage) items.push(t(`copilot.tier.${modelTier}`))
   if (usage?.tokensIn !== undefined || usage?.tokensOut !== undefined) {
     items.push(
       t('copilot.usage.tokens', {
@@ -53,7 +52,7 @@ export function UsageFooter({ usage, transport, modelTier }: UsageFooterProps): 
         </span>
       ))}
       {transport ? (
-        <span className='nxcp-usage-item' style={{ marginLeft: 'auto' }} data-transport={transport}>
+        <span className='nxcp-usage-item' data-transport={transport}>
           {t(`copilot.transport.${transport}`)}
         </span>
       ) : null}

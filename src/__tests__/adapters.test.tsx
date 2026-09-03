@@ -385,7 +385,7 @@ describe('Composer', () => {
     expect(box.value).toBe('')
   })
 
-  it('offers a stop control while a run is in flight', async () => {
+  it('flips the primary button to Stop while a run is in flight', async () => {
     const transport = new RecordingTransport()
     render(<ComposerHarness transport={transport} />)
     const box = screen.getByLabelText('Message')
@@ -393,7 +393,10 @@ describe('Composer', () => {
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Send' }))
     })
-    expect(screen.getByRole('button', { name: 'Stop' })).toBeTruthy()
+    const stop = screen.getByRole('button', { name: 'Stop' })
+    expect(stop.className).toContain('nxcp-send')
+    expect(stop.hasAttribute('disabled')).toBe(false)
+    expect(screen.queryByRole('button', { name: 'Send' })).toBeNull()
   })
 })
 
