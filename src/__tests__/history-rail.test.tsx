@@ -10,6 +10,7 @@ import { ThreadList } from '../components/thread-list'
 import type { CopilotEngine } from '../runtime/engine'
 import type { CopilotTransport, CreatedTurn, ThreadPatch } from '../transport/types'
 import type { CopilotThread } from '../types'
+import { COPILOT_CSS } from '../ui/styles'
 import { testAdapters } from './helpers'
 
 const HOUR = 3_600_000
@@ -193,18 +194,18 @@ describe('HistoryRail', () => {
     mount(transport)
     await screen.findByText('Today thread')
     openMenu('Week thread')
-    expect(screen.getByRole('menu')).toBeTruthy()
+    expect(screen.getByRole('group', { name: 'Conversation actions' })).toBeTruthy()
     await act(async () => {
-      fireEvent.click(screen.getByRole('menuitem', { name: 'Pin' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Pin' }))
     })
     expect(transport.patches).toEqual([['week', { isPinned: true }]])
-    expect(screen.queryByRole('menu')).toBeNull()
+    expect(screen.queryByRole('group', { name: 'Conversation actions' })).toBeNull()
     // Pinned rows keep the newest-first order among themselves.
     await waitFor(() => expect(titles().slice(0, 2)).toEqual(['Week thread', 'Pinned thread']))
 
     openMenu('Week thread')
     await act(async () => {
-      fireEvent.click(screen.getByRole('menuitem', { name: 'Unpin' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Unpin' }))
     })
     expect(transport.patches[1]).toEqual(['week', { isPinned: false }])
   })
@@ -215,7 +216,7 @@ describe('HistoryRail', () => {
     await screen.findByText('Today thread')
 
     openMenu('Today thread')
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Rename' }))
     const input = screen.getByRole('textbox', { name: 'Rename' }) as HTMLInputElement
     expect(input.value).toBe('Today thread')
     fireEvent.change(input, { target: { value: 'Renamed' } })
@@ -226,7 +227,7 @@ describe('HistoryRail', () => {
     expect(await screen.findByText('Renamed')).toBeTruthy()
 
     openMenu('Renamed')
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Rename' }))
     fireEvent.change(screen.getByRole('textbox', { name: 'Rename' }), { target: { value: '  ' } })
     await act(async () => {
       fireEvent.keyDown(screen.getByRole('textbox', { name: 'Rename' }), { key: 'Enter' })
@@ -234,7 +235,7 @@ describe('HistoryRail', () => {
     expect(transport.patches[1]).toEqual(['today', { title: 'Untitled' }])
 
     openMenu('Untitled')
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Rename' }))
     fireEvent.change(screen.getByRole('textbox', { name: 'Rename' }), {
       target: { value: 'abandoned' },
     })
@@ -251,7 +252,7 @@ describe('HistoryRail', () => {
     await screen.findByText('Today thread')
 
     openMenu('Earlier thread')
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
     const confirm = screen.getByRole('group', { name: 'Delete this conversation?' })
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(screen.queryByRole('group', { name: 'Delete this conversation?' })).toBeNull()
@@ -259,7 +260,7 @@ describe('HistoryRail', () => {
     expect(confirm.isConnected).toBe(false)
 
     openMenu('Earlier thread')
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
     })
@@ -286,7 +287,7 @@ describe('HistoryRail', () => {
     await screen.findByText('Today thread')
     openMenu('Week thread')
     await act(async () => {
-      fireEvent.click(screen.getByRole('menuitem', { name: 'Pin' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Pin' }))
     })
     await waitFor(() => expect(logger.warn).toHaveBeenCalled())
     expect(headings()[0]).toBe('Pinned')
@@ -298,13 +299,35 @@ describe('HistoryRail', () => {
     await screen.findByText('Today thread')
     const row = openMenu('Today thread')
     fireEvent.keyDown(row, { key: 'Escape' })
-    expect(screen.queryByRole('menu')).toBeNull()
+    expect(screen.queryByRole('group', { name: 'Conversation actions' })).toBeNull()
 
     openMenu('Today thread')
-    fireEvent.mouseDown(screen.getByRole('menu'))
-    expect(screen.getByRole('menu')).toBeTruthy()
+    fireEvent.mouseDown(screen.getByRole('group', { name: 'Conversation actions' }))
+    expect(screen.getByRole('group', { name: 'Conversation actions' })).toBeTruthy()
     fireEvent.mouseDown(document.body)
+    expect(screen.queryByRole('group', { name: 'Conversation actions' })).toBeNull()
+  })
+
+  // The row actions are Tab-reachable buttons, so they must not promise the arrow-key model a
+  // menu role would announce.
+  it('offers the row actions as plain buttons, not a menu', async () => {
+    mount(new ThreadTransport())
+    await screen.findByText('Today thread')
+    const row = openMenu('Today thread')
+    expect(row.querySelector('.nxcp-thread-kebab')?.getAttribute('aria-haspopup')).toBeNull()
     expect(screen.queryByRole('menu')).toBeNull()
+    expect(screen.queryByRole('menuitem')).toBeNull()
+    const group = screen.getByRole('group', { name: 'Conversation actions' })
+    expect([...group.querySelectorAll('button')].map((node) => node.textContent)).toEqual([
+      'Pin',
+      'Rename',
+      'Delete',
+    ])
+  })
+
+  it('styles the grouped rows as a flush list', () => {
+    expect(COPILOT_CSS).toContain('.nxcp-history-items {')
+    expect(COPILOT_CSS).toContain('.nxcp-thread-menu button {')
   })
 
   it('offers New chat in the full rail and drops it when compact', async () => {

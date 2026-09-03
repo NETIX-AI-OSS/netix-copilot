@@ -12,7 +12,7 @@ import { isRunActive } from '../runtime/run-store'
 import { injectCopilotStyles } from '../ui/styles'
 import { themeToCssVars } from '../ui/theme'
 import { Composer } from './composer'
-import { EmptyState, SparkIcon } from './empty-state'
+import { EmptyState, QuickPrompts, SparkIcon } from './empty-state'
 import { ThreadsPopover } from './history-rail'
 import { MessageView } from './message-view'
 import { ToastHost } from './toast-pill'
@@ -108,12 +108,20 @@ export function CopilotPanel({
         {state.threadLoading ? (
           <p className='nxcp-empty'>{t('copilot.threads.restoring')}</p>
         ) : state.turns.length === 0 ? (
-          <EmptyState
-            heading={emptyState ?? t('copilot.dock.title')}
-            body={t('copilot.dock.empty')}
-            chips={chips}
-            onSelect={send}
-          />
+          emptyState === undefined ? (
+            <EmptyState
+              heading={t('copilot.dock.title')}
+              body={t('copilot.dock.empty')}
+              chips={chips}
+              onSelect={send}
+            />
+          ) : (
+            // A host placeholder stands in for the whole default block, as it did in v0.3.
+            <div className='nxcp-empty-state'>
+              {emptyState}
+              <QuickPrompts chips={chips} onSelect={send} />
+            </div>
+          )
         ) : (
           state.turns.map((turn) => {
             const view = <MessageView key={turn.id} turn={turn} />

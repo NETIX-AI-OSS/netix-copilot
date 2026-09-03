@@ -94,9 +94,6 @@ const PLAN_STATUSES = {
 function planStatus(value) {
     return typeof value === 'string' ? (PLAN_STATUSES[value] ?? 'pending') : 'pending';
 }
-// The orchestrator's planning call. Its output is the plan the model wrote, so it becomes the
-// run's RunPlan rather than a step of its own.
-const PLAN_TOOL = 'make_plan';
 function readNumber(value) {
     return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
@@ -137,7 +134,7 @@ function withKind(step, entry) {
 function planSteps(plan) {
     return plan
         .filter(isRecord)
-        .filter((entry) => entry.tool !== PLAN_TOOL)
+        .filter((entry) => entry.tool !== trace_model_1.PLAN_TOOL)
         .map((entry, index) => {
         const summary = summarizeArguments(entry.arguments);
         return withKind({
@@ -216,7 +213,7 @@ function logSteps(entry, index) {
 }
 // The plan the model wrote, from the make_plan entry's stored output.
 function readPlanOutput(entry) {
-    if (entry.tool !== PLAN_TOOL)
+    if (entry.tool !== trace_model_1.PLAN_TOOL)
         return undefined;
     const output = isRecord(entry.output) ? entry.output : {};
     const lines = Array.isArray(output.steps)
@@ -225,6 +222,10 @@ function readPlanOutput(entry) {
     const reasoning = typeof output.reasoning === 'string' ? output.reasoning : undefined;
     return { ...(reasoning === undefined ? {} : { reasoning }), lines };
 }
+// ml-engine marks a direct-routed run by inserting a synthetic call_*_agent entry into plan_trace
+// under a `direct-<domain>-<pk>` call_id. It never streams and execution_log has no twin, so it
+// names the specialist for the header instead of drawing an empty card.
+const DIRECT_MARKER = /^direct-/;
 // The trace tree from a stored row: plan_trace and execution_log describe the same calls under
 // the same call_id, the make_plan entry yields the plan, and each call_*_agent entry brings its
 // specialist's calls in beneath it. Plan lines are shown as written, never as pending steps.
@@ -232,7 +233,9 @@ function rebuildRun(row) {
     const stored = Array.isArray(row.plan) ? row.plan : [];
     const lines = stored.filter((line) => typeof line === 'string');
     let plan = lines.length > 0 ? { lines } : undefined;
-    const steps = planSteps(stored);
+    const traced = planSteps(stored);
+    const marker = traced.find((step) => step.kind === 'agent' && DIRECT_MARKER.test(step.id));
+    const steps = traced.filter((step) => step !== marker);
     const log = (Array.isArray(row.execution_log) ? row.execution_log : []).filter(isRecord);
     for (let index = 0; index < log.length; index += 1) {
         const entry = log[index];
@@ -242,7 +245,13 @@ function rebuildRun(row) {
         else
             steps.push(...logSteps(entry, index));
     }
-    return { steps: mergeSteps(steps), ...(plan === undefined ? {} : { plan }) };
+    return {
+        steps: mergeSteps(steps),
+        ...(plan === undefined ? {} : { plan }),
+        ...(marker === undefined
+            ? {}
+            : { route: 'direct', agent: (0, trace_model_1.agentKey)(marker.title) ?? marker.title }),
+    };
 }
 // plan_trace and execution_log describe the same tool calls under the same call_id, so a
 // transcript that concatenated them would render every step twice.
@@ -272,6 +281,9 @@ function lastToolOutput(row) {
     return undefined;
 }
 function readRunSummary(row) {
+    return summarize(row, rebuildRun(row));
+}
+function summarize(row, { steps, plan }) {
     const summary = {};
     if (Array.isArray(row.tools)) {
         const tools = row.tools.filter((tool) => typeof tool === 'string');
@@ -285,7 +297,6 @@ function readRunSummary(row) {
     if (resultData !== undefined)
         summary.resultData = resultData;
     // The stored trace rides along, so a run that streamed flat nests once it ends.
-    const { steps, plan } = rebuildRun(row);
     if (steps.length > 0)
         summary.steps = steps;
     if (plan !== undefined)
@@ -374,10 +385,13 @@ function runFromRow(row, idPrefix, base) {
     const usage = mapUsage(row.usage);
     const error = row.error?.trim();
     const text = base.text === '' ? (row.response_text?.trim() ?? '') : base.text;
-    const summary = readRunSummary(row);
+    const rebuilt = rebuildRun(row);
+    const summary = summarize(row, rebuilt);
     return {
         ...base,
         ...summary,
+        ...(rebuilt.route === undefined ? {} : { route: rebuilt.route }),
+        ...(rebuilt.agent === undefined ? {} : { agent: rebuilt.agent }),
         status: runStatusFrom(row.status),
         hasPlan: summary.plan !== undefined || (Array.isArray(row.plan) && row.plan.length > 0),
         steps: summary.steps ?? [],

@@ -183,17 +183,27 @@ function renderLines(lines: string[], keyPrefix: string): ReactNode[] {
 
 export interface MarkdownProps {
   text: string
+  // Draws the caret after the last character rather than under the last block.
+  streaming?: boolean
 }
 
-export function Markdown({ text }: MarkdownProps): ReactNode {
+export function Markdown({ text, streaming = false }: MarkdownProps): ReactNode {
   const blocks = parseBlocks(text)
+  const caret = streaming ? <span className='nxcp-caret' aria-hidden='true' /> : null
+  if (blocks.length === 0) return caret
   return (
     <>
-      {blocks.map((block) => {
+      {blocks.map((block, index) => {
+        const tail = index === blocks.length - 1 ? caret : null
         switch (block.kind) {
           case 'heading': {
             const Tag = (['h1', 'h2', 'h3'] as const)[block.level - 1] ?? 'h3'
-            return <Tag key={block.key}>{renderInline(block.text, block.key)}</Tag>
+            return (
+              <Tag key={block.key}>
+                {renderInline(block.text, block.key)}
+                {tail}
+              </Tag>
+            )
           }
           case 'code':
             return (
@@ -201,12 +211,14 @@ export function Markdown({ text }: MarkdownProps): ReactNode {
                 <code {...(block.language ? { 'data-language': block.language } : {})}>
                   {block.lines.join('\n')}
                 </code>
+                {tail}
               </pre>
             )
           case 'list': {
             const items = block.items.map((item, position) => (
               <li key={`${block.key}-${position}`}>
                 {renderInline(item, `${block.key}-${position}`)}
+                {position === block.items.length - 1 ? tail : null}
               </li>
             ))
             return block.ordered ? (
@@ -216,13 +228,24 @@ export function Markdown({ text }: MarkdownProps): ReactNode {
             )
           }
           case 'quote':
-            return <blockquote key={block.key}>{renderLines(block.lines, block.key)}</blockquote>
+            return (
+              <blockquote key={block.key}>
+                {renderLines(block.lines, block.key)}
+                {tail}
+              </blockquote>
+            )
           case 'rule':
-            return <hr key={block.key} />
+            return (
+              <Fragment key={block.key}>
+                <hr />
+                {tail}
+              </Fragment>
+            )
           default:
             return (
               <p key={block.key}>
-                <Fragment>{renderLines(block.lines, block.key)}</Fragment>
+                {renderLines(block.lines, block.key)}
+                {tail}
               </p>
             )
         }

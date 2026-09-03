@@ -8,7 +8,7 @@
 // carries its plan, its tool calls, its chart, its result table and its timing, so it renders
 // through exactly the same components as the turn that just finished streaming.
 
-import { isAgentStep } from '../runtime/trace-model'
+import { agentKey, isAgentStep, PLAN_TOOL } from '../runtime/trace-model'
 import type {
   CopilotChart,
   CopilotResultData,
@@ -18,6 +18,7 @@ import type {
   JsonValue,
   PlanStep,
   RunPlan,
+  RunRoute,
   RunState,
 } from '../types'
 import { normalizeResultData } from './result-data'
@@ -109,10 +110,6 @@ const PLAN_STATUSES: Record<string, PlanStep['status']> = {
 function planStatus(value: unknown): PlanStep['status'] {
   return typeof value === 'string' ? (PLAN_STATUSES[value] ?? 'pending') : 'pending'
 }
-
-// The orchestrator's planning call. Its output is the plan the model wrote, so it becomes the
-// run's RunPlan rather than a step of its own.
-const PLAN_TOOL = 'make_plan'
 
 function readNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
@@ -256,7 +253,14 @@ export function readPlanOutput(entry: Record<string, unknown>): RunPlan | undefi
 export interface RebuiltRun {
   steps: PlanStep[]
   plan?: RunPlan
+  route?: RunRoute
+  agent?: string
 }
+
+// ml-engine marks a direct-routed run by inserting a synthetic call_*_agent entry into plan_trace
+// under a `direct-<domain>-<pk>` call_id. It never streams and execution_log has no twin, so it
+// names the specialist for the header instead of drawing an empty card.
+const DIRECT_MARKER = /^direct-/
 
 // The trace tree from a stored row: plan_trace and execution_log describe the same calls under
 // the same call_id, the make_plan entry yields the plan, and each call_*_agent entry brings its
@@ -265,7 +269,9 @@ export function rebuildRun(row: CopilotRunRow): RebuiltRun {
   const stored = Array.isArray(row.plan) ? row.plan : []
   const lines = stored.filter((line): line is string => typeof line === 'string')
   let plan: RunPlan | undefined = lines.length > 0 ? { lines } : undefined
-  const steps = planSteps(stored)
+  const traced = planSteps(stored)
+  const marker = traced.find((step) => step.kind === 'agent' && DIRECT_MARKER.test(step.id))
+  const steps = traced.filter((step) => step !== marker)
   const log = (Array.isArray(row.execution_log) ? row.execution_log : []).filter(isRecord)
   for (let index = 0; index < log.length; index += 1) {
     const entry = log[index]!
@@ -273,7 +279,13 @@ export function rebuildRun(row: CopilotRunRow): RebuiltRun {
     if (planned !== undefined) plan = planned
     else steps.push(...logSteps(entry, index))
   }
-  return { steps: mergeSteps(steps), ...(plan === undefined ? {} : { plan }) }
+  return {
+    steps: mergeSteps(steps),
+    ...(plan === undefined ? {} : { plan }),
+    ...(marker === undefined
+      ? {}
+      : { route: 'direct', agent: agentKey(marker.title) ?? marker.title }),
+  }
 }
 
 // plan_trace and execution_log describe the same tool calls under the same call_id, so a
@@ -302,6 +314,10 @@ function lastToolOutput(row: CopilotRunRow): CopilotResultData | undefined {
 }
 
 export function readRunSummary(row: CopilotRunRow): CopilotRunSummary {
+  return summarize(row, rebuildRun(row))
+}
+
+function summarize(row: CopilotRunRow, { steps, plan }: RebuiltRun): CopilotRunSummary {
   const summary: CopilotRunSummary = {}
   if (Array.isArray(row.tools)) {
     const tools = row.tools.filter((tool): tool is string => typeof tool === 'string')
@@ -313,7 +329,6 @@ export function readRunSummary(row: CopilotRunRow): CopilotRunSummary {
   const resultData = normalizeResultData(row.result_data) ?? lastToolOutput(row)
   if (resultData !== undefined) summary.resultData = resultData
   // The stored trace rides along, so a run that streamed flat nests once it ends.
-  const { steps, plan } = rebuildRun(row)
   if (steps.length > 0) summary.steps = steps
   if (plan !== undefined) summary.plan = plan
   return summary
@@ -391,10 +406,13 @@ export function runFromRow(row: CopilotRunRow, idPrefix: string, base: RunState)
   const usage = mapUsage(row.usage)
   const error = row.error?.trim()
   const text = base.text === '' ? (row.response_text?.trim() ?? '') : base.text
-  const summary = readRunSummary(row)
+  const rebuilt = rebuildRun(row)
+  const summary = summarize(row, rebuilt)
   return {
     ...base,
     ...summary,
+    ...(rebuilt.route === undefined ? {} : { route: rebuilt.route }),
+    ...(rebuilt.agent === undefined ? {} : { agent: rebuilt.agent }),
     status: runStatusFrom(row.status),
     hasPlan: summary.plan !== undefined || (Array.isArray(row.plan) && row.plan.length > 0),
     steps: summary.steps ?? [],

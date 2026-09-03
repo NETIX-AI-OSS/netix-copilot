@@ -1,4 +1,4 @@
-import type { CopilotRunSummary, CopilotUsage, PlanStep, RunPlan, RunState } from '../types';
+import type { CopilotRunSummary, CopilotUsage, PlanStep, RunPlan, RunRoute, RunState } from '../types';
 import type { CopilotTranscriptTurn } from './types';
 export declare const AGENTIC_STATUS: {
     readonly PENDING: 0;
@@ -37,6 +37,8 @@ export declare function readPlanOutput(entry: Record<string, unknown>): RunPlan 
 export interface RebuiltRun {
     steps: PlanStep[];
     plan?: RunPlan;
+    route?: RunRoute;
+    agent?: string;
 }
 export declare function rebuildRun(row: CopilotRunRow): RebuiltRun;
 export declare function mergeSteps(steps: PlanStep[]): PlanStep[];

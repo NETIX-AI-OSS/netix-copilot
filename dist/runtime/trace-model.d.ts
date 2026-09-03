@@ -3,6 +3,7 @@ export interface TraceNode {
     step: PlanStep;
     children: TraceNode[];
 }
+export declare const PLAN_TOOL = "make_plan";
 export declare function isAgentStep(step: PlanStep): boolean;
 export declare function agentKey(nameOrTool: string): string | undefined;
 export declare function buildTraceTree(steps: readonly PlanStep[]): TraceNode[];

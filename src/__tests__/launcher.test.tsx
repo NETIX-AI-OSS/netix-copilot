@@ -26,7 +26,7 @@ function mount(onOpen = vi.fn(), overrides: Partial<CopilotAdapters> = {}) {
       <Launcher onOpen={onOpen} />
     </CopilotProvider>,
   )
-  return screen.getByRole('button', { name: 'Copilot assistant' })
+  return screen.getByRole('button', { name: 'Ask Copilot' })
 }
 
 describe('Launcher', () => {
@@ -34,6 +34,7 @@ describe('Launcher', () => {
     const pill = mount()
     expect(pill.className).toBe('nxcp-root nxcp-launcher')
     expect(pill.getAttribute('data-expanded')).toBe('false')
+    // The accessible name is the visible label, so voice control can say what it sees.
     expect(screen.getByText('Ask Copilot')).toBeTruthy()
     expect(pill.querySelector('.nxcp-launcher-chevron')).toBeNull()
     expect(pill.querySelector('.nxcp-launcher-halo')?.getAttribute('aria-hidden')).toBe('true')
@@ -74,7 +75,7 @@ describe('Launcher', () => {
         <Launcher onOpen={() => undefined} />
       </CopilotProvider>,
     )
-    expect(screen.getByRole('button', { name: 'T:copilot.dock.label' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'T:copilot.dock.open' })).toBeTruthy()
     expect(screen.getByText('T:copilot.dock.open')).toBeTruthy()
   })
 

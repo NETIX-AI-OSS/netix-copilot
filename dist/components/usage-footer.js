@@ -34,5 +34,5 @@ function UsageFooter({ usage, transport, modelTier }) {
     }
     if (items.length === 0 && transport === undefined)
         return null;
-    return ((0, jsx_runtime_1.jsxs)("footer", { className: 'nxcp-footer', children: [items.map((item) => ((0, jsx_runtime_1.jsx)("span", { className: 'nxcp-usage-item', children: item }, item))), transport ? ((0, jsx_runtime_1.jsx)("span", { className: 'nxcp-usage-item', "data-transport": transport, children: t(`copilot.transport.${transport}`) })) : null] }));
+    return ((0, jsx_runtime_1.jsxs)("footer", { className: 'nxcp-footer', children: [items.map((item) => ((0, jsx_runtime_1.jsx)("span", { className: 'nxcp-usage-item', children: item }, item))), transport ? ((0, jsx_runtime_1.jsx)("span", { className: 'nxcp-transport-dot', "data-transport": transport, role: 'img', title: t(`copilot.transport.${transport}`), "aria-label": t(`copilot.transport.${transport}`) })) : null] }));
 }

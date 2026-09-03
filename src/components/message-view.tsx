@@ -79,11 +79,13 @@ export function MessageView({
         {run.text !== '' ? (
           <div className='nxcp-answer'>
             {renderMarkdown ? (
-              renderMarkdown(run.text, { streaming })
+              <>
+                {renderMarkdown(run.text, { streaming })}
+                {streaming ? <span className='nxcp-caret' aria-hidden='true' /> : null}
+              </>
             ) : (
-              <Markdown text={run.text} />
+              <Markdown text={run.text} streaming={streaming} />
             )}
-            {streaming ? <span className='nxcp-caret' aria-hidden='true' /> : null}
           </div>
         ) : null}
 

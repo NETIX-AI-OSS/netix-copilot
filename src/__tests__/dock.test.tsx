@@ -139,8 +139,8 @@ describe('CopilotDock', () => {
         <CopilotDock />
       </CopilotProvider>,
     )
-    // The pill is named for assistive tech; the visible label is what the hover reveals.
-    expect(screen.getByRole('button', { name: 'Copilot assistant' })).toBeTruthy()
+    // The pill is named by its label, which the hover reveals.
+    expect(screen.getByRole('button', { name: 'Ask Copilot' })).toBeTruthy()
     expect(screen.getByText('Ask Copilot')).toBeTruthy()
     expect(screen.queryByRole('complementary')).toBeNull()
   })
@@ -267,7 +267,9 @@ describe('CopilotDock', () => {
     act(() => {
       transport.consumeCalls[0]?.onTransportChange?.('agentic')
     })
-    expect(screen.getByText('polling')).toBeTruthy()
+    expect(screen.getByRole('img', { name: 'polling' }).getAttribute('data-transport')).toBe(
+      'agentic',
+    )
   })
 
   it('lists earlier conversations in the header popover when threads are enabled', async () => {
@@ -402,7 +404,7 @@ describe('CopilotDock open state', () => {
 
   it('hides the launcher for a host that opens the dock from its own chrome', () => {
     renderDock({ open: false, showLauncher: false })
-    expect(screen.queryByRole('button', { name: 'Copilot assistant' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Ask Copilot' })).toBeNull()
   })
 })
 
@@ -433,11 +435,11 @@ describe('CopilotDock modes', () => {
   it('renders nothing in full mode and comes back when demoted', () => {
     const { rerenderWith } = renderDock({ mode: 'full' })
     expect(screen.queryByRole('complementary')).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Copilot assistant' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Ask Copilot' })).toBeNull()
     rerenderWith({ mode: 'dock' })
     expect(screen.getByRole('complementary')).toBeTruthy()
     rerenderWith({ mode: 'min' })
-    expect(screen.getByRole('button', { name: 'Copilot assistant' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Ask Copilot' })).toBeTruthy()
   })
 
   it('offers Expand only when the host can act on it', () => {
@@ -460,7 +462,7 @@ describe('CopilotDock modes', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Minimise' }))
     expect(onModeChange).toHaveBeenCalledWith('min')
     expect(onOpenChange).toHaveBeenCalledWith(false)
-    expect(screen.getByRole('button', { name: 'Copilot assistant' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Ask Copilot' })).toBeTruthy()
     expect(window.localStorage.getItem('netix-copilot.open')).toBe('false')
   })
 
@@ -468,7 +470,7 @@ describe('CopilotDock modes', () => {
     const onModeChange = vi.fn()
     const onOpenChange = vi.fn()
     renderDock({ open: false, onModeChange, onOpenChange })
-    fireEvent.click(screen.getByRole('button', { name: 'Copilot assistant' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Ask Copilot' }))
     expect(onModeChange).toHaveBeenCalledWith('dock')
     expect(onOpenChange).toHaveBeenCalledWith(true)
     // Still controlled, so the host decides.

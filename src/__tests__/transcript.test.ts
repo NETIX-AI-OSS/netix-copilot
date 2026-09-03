@@ -427,8 +427,10 @@ describe('rebuildRun', () => {
     })
   })
 
-  it('keeps a direct-routed run as one agent card with nothing beneath it', () => {
-    const direct = rebuildRun({
+  // ml-engine's synthetic plan_trace marker never ran as a call, so it names the specialist for
+  // the header and leaves the tool rows flat, the way the run streamed.
+  it('reads a direct-routed run as flat tool rows under the specialist it names', () => {
+    const row: CopilotRunRow = {
       plan: [
         {
           tool: 'call_facilities_agent',
@@ -441,12 +443,13 @@ describe('rebuildRun', () => {
       execution_log: [
         { tool: 'realtime_data_retrieve', call_id: 'c1', arguments: { tag_ids: [1] }, output: {} },
       ],
-    })
+    }
+    const direct = rebuildRun(row)
     expect(direct.plan).toBeUndefined()
-    expect(direct.steps.map((step) => [step.id, step.kind])).toEqual([
-      ['direct-facilities-9', 'agent'],
-      ['c1', 'tool'],
-    ])
+    expect(direct.steps.map((step) => [step.id, step.kind])).toEqual([['c1', 'tool']])
+    expect(direct).toMatchObject({ route: 'direct', agent: 'facilities' })
+    expect(turnFromRow(row, '7', 0).run).toMatchObject({ route: 'direct', agent: 'facilities' })
+    expect(turnFromRow(ORCHESTRATED_ROW, '7', 0).run.route).toBeUndefined()
   })
 
   it('rebuilds identically whichever row grouping is read', () => {

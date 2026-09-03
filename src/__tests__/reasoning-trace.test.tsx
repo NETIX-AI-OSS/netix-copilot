@@ -7,9 +7,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { CopilotProvider } from '../adapters/context'
 import { ReasoningTrace } from '../components/reasoning-trace'
-import { initialRunState } from '../runtime/run-store'
+import { applyEvent, initialRunState } from '../runtime/run-store'
+import type { CopilotRunRow } from '../transport/transcript'
+import { readRunSummary, turnFromRow } from '../transport/transcript'
 import type { CopilotTransport } from '../transport/types'
-import type { PlanStep, RunState } from '../types'
+import type { CopilotEvent, PlanStep, RunState } from '../types'
 import { testAdapters } from './helpers'
 
 const transport: CopilotTransport = {
@@ -244,6 +246,89 @@ describe('ReasoningTrace header', () => {
     expect(live?.textContent).toBe('Thinking…')
     tick(1000)
     expect(live?.textContent).toBe('Planning')
+  })
+})
+
+// The stream shows make_plan as a running row and the stored row turns it into the plan, so the
+// trace a live run ends in and the one a reload rebuilds must draw the same rows.
+describe('ReasoningTrace live, finished and replayed', () => {
+  const row: CopilotRunRow = {
+    id: 9,
+    status: 1,
+    execution_time: 4,
+    plan: [
+      { tool: 'make_plan', call_id: 'p0', status: 'completed' },
+      {
+        tool: 'call_facilities_agent',
+        call_id: 'c1',
+        status: 'completed',
+        arguments: { task: 'Read AHU-01' },
+      },
+    ],
+    execution_log: [
+      { tool: 'make_plan', call_id: 'p0', output: { steps: ['Read AHU-01'] } },
+      {
+        tool: 'call_facilities_agent',
+        call_id: 'c1',
+        arguments: { task: 'Read AHU-01' },
+        output: {
+          specialist: 'FacilitiesAgent',
+          sub_execution_log: [{ tool: 'realtime_data_retrieve', call_id: 's1', status: 'ok' }],
+        },
+      },
+    ],
+  }
+  const stream: CopilotEvent[] = [
+    { type: 'run_started', turnId: 't1', route: 'orchestrator' },
+    {
+      type: 'step_started',
+      step: { id: 'p0', title: 'make_plan', tool: 'make_plan', status: 'running' },
+    },
+    { type: 'step_result', step: { id: 'p0', title: 'make_plan', status: 'ok' } },
+    { type: 'plan', steps: [], lines: ['Read AHU-01'] },
+    {
+      type: 'step_started',
+      step: {
+        id: 'c1',
+        title: 'call_facilities_agent',
+        tool: 'call_facilities_agent',
+        status: 'running',
+      },
+    },
+    {
+      type: 'step_started',
+      step: {
+        id: 's1',
+        title: 'realtime_data_retrieve',
+        tool: 'realtime_data_retrieve',
+        status: 'running',
+      },
+    },
+    { type: 'step_result', step: { id: 's1', title: 'realtime_data_retrieve', status: 'ok' } },
+    { type: 'step_result', step: { id: 'c1', title: 'call_facilities_agent', status: 'ok' } },
+  ]
+  const rows = () =>
+    [...document.querySelectorAll('.nxcp-row-label')].map((node) => node.textContent)
+
+  it('draws identical rows and the same header before and after a reload', () => {
+    const live = stream.reduce(applyEvent, initialRunState())
+    const { rerender } = render(wrap(<ReasoningTrace run={live} defaultOpen />))
+    expect(rows()).toEqual(['Planned the approach', 'Read live values'])
+
+    const finished = applyEvent(live, { type: 'done', ...readRunSummary(row) })
+    rerender(wrap(<ReasoningTrace run={finished} defaultOpen />))
+    const finishedRows = rows()
+    const finishedLabel = label()
+    expect(finishedRows).toEqual(['Read live values'])
+    expect(finishedLabel).toBe('Reasoned for 4.0 s · 2 steps · 1 specialists')
+    expect(document.querySelector('.nxcp-trace-chip')).toBeNull()
+
+    const replayed = turnFromRow(row, '9', 0).run
+    expect(replayed.steps.map((step) => step.id)).toEqual(finished.steps.map((step) => step.id))
+    rerender(wrap(<ReasoningTrace run={replayed} defaultOpen />))
+    expect(rows()).toEqual(finishedRows)
+    expect(label()).toBe(finishedLabel)
+    expect(body()?.querySelectorAll('.nxcp-trace-plan-lines li')).toHaveLength(1)
   })
 })
 

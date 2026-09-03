@@ -52,9 +52,13 @@ export function UsageFooter({ usage, transport, modelTier }: UsageFooterProps): 
         </span>
       ))}
       {transport ? (
-        <span className='nxcp-usage-item' data-transport={transport}>
-          {t(`copilot.transport.${transport}`)}
-        </span>
+        <span
+          className='nxcp-transport-dot'
+          data-transport={transport}
+          role='img'
+          title={t(`copilot.transport.${transport}`)}
+          aria-label={t(`copilot.transport.${transport}`)}
+        />
       ) : null}
     </footer>
   )

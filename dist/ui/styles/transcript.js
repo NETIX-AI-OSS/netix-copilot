@@ -149,6 +149,11 @@ exports.TRANSCRIPT_CSS = `
   border-block-start: 1px solid var(--nxcp-border);
   margin: 8px 0;
 }
+/* A host renderer ends in a block, so its caret sits beside it only if that block goes inline. */
+.nxcp-answer:has(> .nxcp-caret) > :nth-last-child(2) {
+  display: inline;
+  margin-block-end: 0;
+}
 .nxcp-caret {
   display: inline-block;
   width: 7px;
@@ -408,6 +413,45 @@ exports.TRANSCRIPT_CSS = `
   border-color: var(--nxcp-warning);
   color: var(--nxcp-warning);
 }
+.nxcp-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--nxcp-border);
+  border-radius: var(--nxcp-radius);
+  background: var(--nxcp-surface-2);
+}
+.nxcp-step {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12.5px;
+}
+.nxcp-step-tool {
+  font-family: var(--nxcp-mono);
+  font-size: 12px;
+}
+.nxcp-step-args {
+  color: var(--nxcp-text-muted);
+  overflow-wrap: anywhere;
+}
+.nxcp-step-duration {
+  margin-inline-start: auto;
+  color: var(--nxcp-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.nxcp-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--nxcp-text-muted);
+}
+.nxcp-dot[data-status='ok'] { background: var(--nxcp-success); }
+.nxcp-dot[data-status='error'] { background: var(--nxcp-danger); }
+.nxcp-dot[data-status='running'] { background: var(--nxcp-accent); }
+.nxcp-dot[data-status='awaiting_approval'] { background: var(--nxcp-warning); }
 .nxcp-compose-shell {
   padding: 12px 16px 10px;
   border-block-start: 1px solid var(--nxcp-border);
@@ -573,8 +617,10 @@ exports.TRANSCRIPT_CSS = `
   width: 7px;
   height: 7px;
   flex: 0 0 7px;
-  border-inline-end: 1.5px solid currentColor;
-  border-block-end: 1.5px solid currentColor;
+  /* Physical edges on purpose: the square is rotated, so a logical edge would point the chevron
+     sideways under RTL. */
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
   transform: rotate(45deg) translateY(-2px);
 }
 .nxcp-tier-selector[data-locked='true'] {
@@ -594,8 +640,16 @@ exports.TRANSCRIPT_CSS = `
   color: var(--nxcp-text-tertiary);
   white-space: nowrap;
 }
-.nxcp-usage-item[data-transport] {
+.nxcp-transport-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
   margin-inline-start: auto;
+  border-radius: 50%;
+  background: var(--nxcp-success);
+}
+.nxcp-transport-dot[data-transport='agentic'] {
+  background: var(--nxcp-warning);
 }
 @media (max-width: 390px) {
   .nxcp-compose-shell { padding-inline: 9px; }

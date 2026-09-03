@@ -8,6 +8,7 @@ import {
   isRunFinished,
 } from '../runtime/run-store'
 import { buildTraceTree } from '../runtime/trace-model'
+import { readRunSummary } from '../transport/transcript'
 import type { CopilotEvent, PlanStep, RunState } from '../types'
 
 function reduce(events: CopilotEvent[], from: RunState = initialRunState()): RunState {
@@ -397,7 +398,8 @@ describe('run-store reasoning trace', () => {
   })
 
   // An old backend streams every call flat. The trace stays flat until the run ends and the stored
-  // sub_execution_log says which specialist made which call; then it nests and says it was rebuilt.
+  // sub_execution_log says which specialist made which call; then it nests. Every call was seen
+  // live, so that is a confirmation, not a rebuild.
   it('renders an untagged stream flat, then nests it from the terminal read-back', () => {
     const live = reduce(FLAT_STREAM)
     expect(buildTraceTree(live.steps).map((node) => node.step.id)).toEqual(['c1', 's1'])
@@ -409,6 +411,78 @@ describe('run-store reasoning trace', () => {
     expect(tree.map((node) => node.step.id)).toEqual(['c1'])
     expect(tree[0]?.children.map((node) => node.step.id)).toEqual(['s1'])
     expect(done.steps[0]?.title).toBe('Read live values for AHU-01')
-    expect(done).toMatchObject({ status: 'done', rebuilt: true, executionMs: 6500 })
+    expect(done).toMatchObject({ status: 'done', executionMs: 6500 })
+    expect(done.rebuilt).toBeUndefined()
+  })
+
+  // ml-engine's synthetic plan_trace marker for a direct route never streams, so the read-back
+  // must neither draw it as a specialist card nor count it as a missed event.
+  it('reads a direct-routed run back without a phantom specialist or a rebuilt chip', () => {
+    const live = reduce([
+      { type: 'run_started', turnId: 't1', route: 'direct', agent: 'FacilitiesAgent' },
+      {
+        type: 'step_started',
+        step: {
+          id: 'call_a1',
+          title: 'realtime_data_retrieve',
+          tool: 'realtime_data_retrieve',
+          status: 'running',
+          kind: 'tool',
+        },
+      },
+      {
+        type: 'step_result',
+        step: { id: 'call_a1', title: 'realtime_data_retrieve', status: 'ok', kind: 'tool' },
+      },
+    ])
+    const summary = readRunSummary({
+      plan: [
+        {
+          tool: 'call_facilities_agent',
+          call_id: 'direct-facilities-77',
+          status: 'completed',
+          detail: 'deterministic single-domain route',
+        },
+      ],
+      execution_log: [
+        {
+          tool: 'realtime_data_retrieve',
+          call_id: 'call_a1',
+          arguments: { tag_ids: [1] },
+          output: {},
+        },
+      ],
+    })
+    const done = applyEvent(live, { type: 'done', ...summary })
+    expect(done.steps.map((step) => step.id)).toEqual(live.steps.map((step) => step.id))
+    expect(done.steps.some((step) => step.kind === 'agent')).toBe(false)
+    expect(done.rebuilt).toBeUndefined()
+    expect(done).toMatchObject({ route: 'direct', agent: 'FacilitiesAgent' })
+  })
+
+  // The stream shows make_plan as a running row; the stored row turns it into the plan. Once the
+  // plan is known the row goes, so the finished trace matches the one a replay rebuilds.
+  it('drops the live make_plan row once the terminal event carries the plan', () => {
+    const live = reduce([
+      { type: 'run_started', turnId: 't1' },
+      {
+        type: 'step_started',
+        step: { id: 'p0', title: 'make_plan', tool: 'make_plan', status: 'running', kind: 'tool' },
+      },
+      { type: 'step_result', step: { id: 'p0', title: 'make_plan', status: 'ok', kind: 'tool' } },
+      { type: 'plan', steps: [], lines: ['Read live values'] },
+      ...FLAT_STREAM.slice(1),
+    ])
+    expect(live.steps.map((step) => step.id)).toEqual(['p0', 'c1', 's1'])
+    const done = applyEvent(live, {
+      type: 'done',
+      steps: REBUILT_STEPS,
+      plan: { lines: ['Read live values'] },
+    })
+    expect(done.steps.map((step) => step.id)).toEqual(['c1', 's1'])
+    expect(done.rebuilt).toBeUndefined()
+    // Without a stored plan there is nothing to stand in for the row, so it stays.
+    const kept = applyEvent(live, { type: 'done', steps: REBUILT_STEPS })
+    expect(kept.steps.map((step) => step.id)).toEqual(['p0', 'c1', 's1'])
   })
 })

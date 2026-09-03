@@ -12,6 +12,10 @@ export interface TraceNode {
   children: TraceNode[]
 }
 
+// The orchestrator's planning call. Its output is the plan the model wrote, so once that plan is
+// known the call shows as the plan rather than as a step of its own.
+export const PLAN_TOOL = 'make_plan'
+
 // The orchestrator's meta-tools, one per specialist: call_facilities_agent, call_asset_agent...
 const AGENT_TOOL_RE = /^call_([a-z0-9_]+)_agent$/
 

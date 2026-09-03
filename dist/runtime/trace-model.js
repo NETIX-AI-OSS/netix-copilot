@@ -6,12 +6,16 @@
 // sub_execution_log is read back. This module is the one place that turns the flat step list
 // into what the trace renders, so the components never reason about lineage themselves.
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.PLAN_TOOL = void 0;
 exports.isAgentStep = isAgentStep;
 exports.agentKey = agentKey;
 exports.buildTraceTree = buildTraceTree;
 exports.agentSteps = agentSteps;
 exports.countSteps = countSteps;
 exports.stepElapsedMs = stepElapsedMs;
+// The orchestrator's planning call. Its output is the plan the model wrote, so once that plan is
+// known the call shows as the plan rather than as a step of its own.
+exports.PLAN_TOOL = 'make_plan';
 // The orchestrator's meta-tools, one per specialist: call_facilities_agent, call_asset_agent...
 const AGENT_TOOL_RE = /^call_([a-z0-9_]+)_agent$/;
 // ml-engine class names map onto the same keys: FacilitiesAgent -> facilities,

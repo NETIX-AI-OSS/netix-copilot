@@ -1122,10 +1122,10 @@ describe('a live streaming run on a tagged backend', () => {
   })
 })
 
-// An old backend sends none of that. The trace renders flat while live and nests, marked as
-// rebuilt, once the terminal read-back brings the stored lineage in.
+// An old backend sends none of that. The trace renders flat while live and nests once the
+// terminal read-back brings the stored lineage in; every call streamed, so nothing was rebuilt.
 describe('a live streaming run on an untagged backend', () => {
-  it('renders flat, then nests from the read-back and says so', async () => {
+  it('renders flat, then nests from the read-back', async () => {
     const responses = [
       jsonResponse({ turn_id: 't1', thread_id: '12' }, 201),
       sseResponse(
@@ -1171,7 +1171,7 @@ describe('a live streaming run on an untagged backend', () => {
 
     const run = engine.activeRun!
     expect(run.startedAt).toBe(777)
-    expect(run.rebuilt).toBe(true)
+    expect(run.rebuilt).toBeUndefined()
     expect(run.steps.map((step) => [step.id, step.parentId])).toEqual([
       ['c1', undefined],
       ['s1', 'c1'],

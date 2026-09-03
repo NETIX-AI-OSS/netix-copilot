@@ -263,7 +263,7 @@ describe('Dock controls', () => {
     const transport = new DecisionTransport()
     mountDock(transport)
     fireEvent.click(screen.getByRole('button', { name: 'Close copilot' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Copilot assistant' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Ask Copilot' }))
     expect(screen.getByRole('complementary')).toBeTruthy()
   })
 

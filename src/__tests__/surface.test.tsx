@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest'
 import { CopilotProvider, useCopilotState } from '../adapters/context'
 import { CopilotDock } from '../components/dock'
 import { MessageView } from '../components/message-view'
+import { CopilotPanel } from '../components/panel'
 import { ThreadList } from '../components/thread-list'
 import type { CopilotTurnView } from '../runtime/engine'
 import { initialRunState } from '../runtime/run-store'
@@ -186,6 +187,34 @@ describe('answer strip', () => {
   it('stays out of the way when the host renders its own chips', () => {
     mount(<MessageView showBadges={false} turn={turn({ tools: ['sql_query'], executionMs: 1 })} />)
     expect(screen.queryByText(/Used /)).toBeNull()
+  })
+})
+
+describe('empty state', () => {
+  it('renders the SDK placeholder with its tile, heading and body by default', () => {
+    mount(<CopilotPanel />)
+    expect(document.querySelector('.nxcp-empty-state .nxcp-empty-tile')).toBeTruthy()
+    expect(document.querySelector('.nxcp-empty-heading')?.textContent).toBe('Copilot')
+    expect(screen.getByText('Ask about anything on this page.').className).toBe('nxcp-empty-body')
+  })
+
+  // cafm-v2-ui and viz-ui pass block content here; it must stand in for the whole placeholder,
+  // never sit inside the SDK's heading with the SDK's body text under it.
+  it('lets a host placeholder replace the whole default block', () => {
+    mount(
+      <CopilotPanel
+        emptyState={<div data-testid='host-empty'>Build this dashboard with AI.</div>}
+        quickPrompts={['Top alarms']}
+      />,
+    )
+    const host = screen.getByTestId('host-empty')
+    expect(host.closest('.nxcp-empty-state')).toBeTruthy()
+    expect(host.closest('h3')).toBeNull()
+    expect(document.querySelector('.nxcp-empty-heading')).toBeNull()
+    expect(document.querySelector('.nxcp-empty-body')).toBeNull()
+    expect(document.querySelector('.nxcp-empty-tile')).toBeNull()
+    expect(screen.queryByText('Ask about anything on this page.')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Top alarms' }).className).toBe('nxcp-quick-prompt')
   })
 })
 

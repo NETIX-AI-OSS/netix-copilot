@@ -4,16 +4,15 @@
 // prefix, `--nxcp-*` tokens only, logical properties only, motion gated by reduced-motion.
 //
 // Sizes are the reference's: 12 px header ring with a 2 px brand border, 11 px row glyphs, 5 px
-// thinking dots, 10 px mono durations. Tokens the shell has not declared yet fall back to the
-// nearest older one so the card renders before the widened token set lands.
+// thinking dots, 10 px mono durations.
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TRACE_CSS = void 0;
 exports.TRACE_CSS = `
 .nxcp-trace {
   container-type: inline-size;
   border: 1px solid var(--nxcp-border);
-  border-radius: var(--nxcp-radius-md, 10px);
-  background: var(--nxcp-surface-2, var(--nxcp-surface-muted));
+  border-radius: var(--nxcp-radius-md);
+  background: var(--nxcp-surface-2);
   overflow: hidden;
   font-size: 12px;
   line-height: 16px;
@@ -50,8 +49,8 @@ exports.TRACE_CSS = `
   flex: none;
   padding: 0 6px;
   border: 1px solid var(--nxcp-border);
-  border-radius: var(--nxcp-radius-pill, 999px);
-  color: var(--nxcp-text-tertiary, var(--nxcp-text-muted));
+  border-radius: var(--nxcp-radius-pill);
+  color: var(--nxcp-text-tertiary);
   font-size: 10.5px;
   font-weight: 500;
   line-height: 15px;
@@ -65,7 +64,7 @@ exports.TRACE_CSS = `
   font-family: var(--nxcp-mono);
   font-size: 10px;
   font-weight: 400;
-  color: var(--nxcp-text-tertiary, var(--nxcp-text-muted));
+  color: var(--nxcp-text-tertiary);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -74,11 +73,13 @@ exports.TRACE_CSS = `
   width: 7px;
   height: 7px;
   margin-inline-start: 4px;
-  border-inline-end: 1.5px solid currentColor;
+  /* Physical edges on purpose: the square is rotated, so a logical edge would point the chevron
+     sideways under RTL. */
+  border-right: 1.5px solid currentColor;
   border-bottom: 1.5px solid currentColor;
-  color: var(--nxcp-text-tertiary, var(--nxcp-text-muted));
+  color: var(--nxcp-text-tertiary);
   transform: rotate(45deg) translateY(-2px);
-  transition: transform var(--nxcp-motion-fast, 120ms ease-out);
+  transition: transform var(--nxcp-motion-fast);
 }
 /* The header label fills the row, so the elapsed figure needs no auto margin of its own. */
 .nxcp-trace-elapsed { margin-inline-start: 0; }
@@ -104,7 +105,7 @@ exports.TRACE_CSS = `
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--nxcp-text-tertiary, var(--nxcp-text-muted));
+  color: var(--nxcp-text-tertiary);
 }
 .nxcp-trace-plan-reasoning { margin: 0; overflow-wrap: anywhere; }
 .nxcp-trace-plan-lines {
@@ -137,14 +138,14 @@ exports.TRACE_CSS = `
   margin: 0;
   padding: 2px 4px;
   border: 0;
-  border-radius: var(--nxcp-radius-sm, 6px);
+  border-radius: var(--nxcp-radius-sm);
   background: transparent;
   color: var(--nxcp-text-muted);
   font: inherit;
   text-align: start;
 }
 button.nxcp-row-head { cursor: pointer; }
-button.nxcp-row-head:hover { background: var(--nxcp-surface-3, var(--nxcp-surface-muted)); }
+button.nxcp-row-head:hover { background: var(--nxcp-surface-3); }
 .nxcp-row-head > .nxcp-glyph { margin-top: 2px; }
 .nxcp-row-label { flex: none; max-width: 60%; overflow-wrap: anywhere; }
 .nxcp-row-args {
@@ -154,7 +155,7 @@ button.nxcp-row-head:hover { background: var(--nxcp-surface-3, var(--nxcp-surfac
   white-space: nowrap;
   font-family: var(--nxcp-mono);
   font-size: 10.5px;
-  color: var(--nxcp-text-tertiary, var(--nxcp-text-muted));
+  color: var(--nxcp-text-tertiary);
 }
 .nxcp-row-expires {
   flex: none;
@@ -193,8 +194,8 @@ button.nxcp-row-head:hover { background: var(--nxcp-surface-3, var(--nxcp-surfac
   margin: 0;
   padding: 8px;
   overflow: auto;
-  border-radius: var(--nxcp-radius-sm, 6px);
-  background: var(--nxcp-surface-3, var(--nxcp-surface-muted));
+  border-radius: var(--nxcp-radius-sm);
+  background: var(--nxcp-surface-3);
   font-family: var(--nxcp-mono);
   font-size: 11px;
   line-height: 1.45;
@@ -210,10 +211,10 @@ button.nxcp-row-head:hover { background: var(--nxcp-surface-3, var(--nxcp-surfac
   padding: 8px 10px;
   border: 1px solid var(--nxcp-border);
   border-inline-start: 3px solid var(--nxcp-accent);
-  border-radius: var(--nxcp-radius-md, 10px);
+  border-radius: var(--nxcp-radius-md);
   background: var(--nxcp-surface);
 }
-.nxcp-agent[data-domain='cafm'] { border-inline-start-color: var(--nxcp-domain-cafm, #0f766e); }
+.nxcp-agent[data-domain='cafm'] { border-inline-start-color: var(--nxcp-domain-cafm); }
 .nxcp-agent-head {
   display: flex;
   align-items: center;
@@ -231,7 +232,7 @@ button.nxcp-row-head:hover { background: var(--nxcp-surface-3, var(--nxcp-surfac
 .nxcp-agent-domain {
   flex: none;
   font-size: 10.5px;
-  color: var(--nxcp-text-tertiary, var(--nxcp-text-muted));
+  color: var(--nxcp-text-tertiary);
 }
 .nxcp-agent-task {
   margin: 0;
@@ -247,7 +248,7 @@ button.nxcp-row-head:hover { background: var(--nxcp-surface-3, var(--nxcp-surfac
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--nxcp-text-tertiary, var(--nxcp-text-muted));
+  color: var(--nxcp-text-tertiary);
 }
 .nxcp-glyph svg { display: block; width: 100%; height: 100%; }
 .nxcp-glyph[data-glyph='tick'] { color: var(--nxcp-success); }
@@ -276,7 +277,7 @@ button.nxcp-row-head:hover { background: var(--nxcp-surface-3, var(--nxcp-surfac
   border-radius: 2px;
   background: currentColor;
 }
-.nxcp-trace-toggle > .nxcp-glyph[data-glyph='tick'] { color: var(--nxcp-text-tertiary, var(--nxcp-text-muted)); }
+.nxcp-trace-toggle > .nxcp-glyph[data-glyph='tick'] { color: var(--nxcp-text-tertiary); }
 @keyframes nxcp-spin {
   to { transform: rotate(360deg); }
 }

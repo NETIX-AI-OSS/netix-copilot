@@ -11,11 +11,32 @@ export function SparkIcon({ size }: { size: number }): ReactNode {
   )
 }
 
-export interface EmptyStateProps {
-  heading: ReactNode
-  body: ReactNode
+export interface QuickPromptsProps {
   chips: readonly string[]
   onSelect: (prompt: string) => void
+}
+
+export function QuickPrompts({ chips, onSelect }: QuickPromptsProps): ReactNode {
+  if (chips.length === 0) return null
+  return (
+    <div className='nxcp-quick-prompts'>
+      {chips.map((prompt) => (
+        <button
+          key={prompt}
+          type='button'
+          className='nxcp-quick-prompt'
+          onClick={() => onSelect(prompt)}
+        >
+          {prompt}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+export interface EmptyStateProps extends QuickPromptsProps {
+  heading: ReactNode
+  body: ReactNode
 }
 
 export function EmptyState({ heading, body, chips, onSelect }: EmptyStateProps): ReactNode {
@@ -26,20 +47,7 @@ export function EmptyState({ heading, body, chips, onSelect }: EmptyStateProps):
       </span>
       <h3 className='nxcp-empty-heading'>{heading}</h3>
       <p className='nxcp-empty-body'>{body}</p>
-      {chips.length > 0 ? (
-        <div className='nxcp-quick-prompts'>
-          {chips.map((prompt) => (
-            <button
-              key={prompt}
-              type='button'
-              className='nxcp-quick-prompt'
-              onClick={() => onSelect(prompt)}
-            >
-              {prompt}
-            </button>
-          ))}
-        </div>
-      ) : null}
+      <QuickPrompts chips={chips} onSelect={onSelect} />
     </div>
   )
 }

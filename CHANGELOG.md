@@ -56,6 +56,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Host-facing class names (`.nxcp-root .nxcp-launcher .nxcp-dock .nxcp-panel .nxcp-turn
 .nxcp-bubble .nxcp-answer .nxcp-chart .nxcp-badge .nxcp-empty` …), `renderTurn` semantics and
   every v0.3 export are preserved.
+- A host `emptyState` replaces the whole default placeholder (tile, heading, body), as in v0.3;
+  `quickPrompts` chips still render beneath it.
+- The footer shows the transport as a small dot (`.nxcp-transport-dot[data-transport]`) whose
+  tooltip and accessible name carry the word, instead of visible text.
+- The launcher's accessible name is its visible label (`copilot.dock.open`, "Ask Copilot").
+- Thread row actions are plain buttons in a labelled `role="group"`, not an ARIA menu.
+- The streaming caret is drawn inside the answer's last block, so it trails the last character.
+- `--nxcp-surface-3`, `--nxcp-border-strong`, `--nxcp-text-tertiary`, `--nxcp-accent-subtle` and
+  `--nxcp-focus-ring` default to `color-mix` derivations of the v0.3 tokens, so a host that only
+  themes those (a dark theme included) stays coherent.
+- Direct-routed runs: ml-engine's synthetic `direct-*` plan_trace marker now sets `route` and
+  `agent` on the replayed run instead of drawing an empty specialist card; the live `make_plan`
+  row is dropped once the terminal event carries the plan; `RunState.rebuilt` is set only when a
+  stored call never streamed, not when the read-back merely filled in lineage.
 
 ## [0.3.0] — 2026-08-24
 

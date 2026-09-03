@@ -216,7 +216,6 @@ export function HistoryRail({
               type='button'
               className='nxcp-icon-button nxcp-thread-kebab'
               aria-label={t('copilot.history.menu')}
-              aria-haspopup='menu'
               aria-expanded={menuOpen}
               onClick={() => setMenuId(menuOpen ? undefined : thread.id)}
             >
@@ -233,13 +232,12 @@ export function HistoryRail({
               </svg>
             </button>
             {menuOpen ? (
-              <div role='menu' className='nxcp-thread-menu'>
-                <button type='button' role='menuitem' onClick={() => togglePin(thread)}>
+              <div role='group' aria-label={t('copilot.history.menu')} className='nxcp-thread-menu'>
+                <button type='button' onClick={() => togglePin(thread)}>
                   {t(thread.isPinned ? 'copilot.history.unpin' : 'copilot.history.pin')}
                 </button>
                 <button
                   type='button'
-                  role='menuitem'
                   onClick={() => {
                     setMenuId(undefined)
                     setRenameValue(thread.title)
@@ -250,7 +248,6 @@ export function HistoryRail({
                 </button>
                 <button
                   type='button'
-                  role='menuitem'
                   data-tone='danger'
                   onClick={() => {
                     setMenuId(undefined)

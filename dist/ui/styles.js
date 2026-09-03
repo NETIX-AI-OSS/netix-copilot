@@ -19,16 +19,18 @@ const SHELL_CSS = `
 .nxcp-root {
   --nxcp-surface: #ffffff;
   --nxcp-surface-muted: #f8fafc;
-  --nxcp-surface-2: var(--nxcp-surface-muted);
-  --nxcp-surface-3: #eef2f7;
   --nxcp-border: #e6eaf0;
-  --nxcp-border-strong: #cbd5e1;
   --nxcp-text: #0f172a;
   --nxcp-text-muted: #475569;
-  --nxcp-text-tertiary: #5e6b7b;
   --nxcp-accent: #1d63e0;
   --nxcp-accent-text: #ffffff;
-  --nxcp-accent-subtle: #e5eefd;
+  /* Derived from the v0.3 tokens, so a host that only sets those (a dark theme included) gets
+     coherent values here; a host value set inline on the same element still wins. */
+  --nxcp-surface-2: var(--nxcp-surface-muted);
+  --nxcp-surface-3: color-mix(in srgb, var(--nxcp-surface-muted) 95%, var(--nxcp-text));
+  --nxcp-border-strong: color-mix(in srgb, var(--nxcp-border) 88%, var(--nxcp-text));
+  --nxcp-text-tertiary: color-mix(in srgb, var(--nxcp-text-muted) 85%, var(--nxcp-surface));
+  --nxcp-accent-subtle: color-mix(in srgb, var(--nxcp-accent) 12%, var(--nxcp-surface));
   --nxcp-domain-cafm: #0e7c86;
   --nxcp-danger: #c8372d;
   --nxcp-success: #1f8a54;
@@ -44,7 +46,7 @@ const SHELL_CSS = `
   --nxcp-elev-2: 0 4px 12px rgba(16, 24, 40, 0.08);
   --nxcp-elev-3: 0 12px 32px rgba(16, 24, 40, 0.16);
   --nxcp-shadow: var(--nxcp-elev-3);
-  --nxcp-focus-ring: 0 0 0 3px rgba(29, 99, 224, 0.45);
+  --nxcp-focus-ring: 0 0 0 3px color-mix(in srgb, var(--nxcp-accent) 45%, transparent);
   --nxcp-motion-fast: 120ms ease-out;
   --nxcp-motion-base: 220ms cubic-bezier(0.2, 0.7, 0.2, 1);
   color: var(--nxcp-text);
@@ -119,7 +121,7 @@ const SHELL_CSS = `
   border-radius: 11px;
   background: var(--nxcp-accent-text);
   color: var(--nxcp-accent);
-  box-shadow: inset 0 0 0 1px rgba(29, 99, 224, 0.18);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--nxcp-accent) 18%, transparent);
 }
 .nxcp-launcher-label {
   position: relative;
@@ -367,6 +369,14 @@ const SHELL_CSS = `
   text-transform: uppercase;
   color: var(--nxcp-text-tertiary);
 }
+.nxcp-history-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
 .nxcp-thread-row {
   position: relative;
   display: flex;
@@ -448,7 +458,7 @@ const SHELL_CSS = `
   box-shadow: var(--nxcp-elev-3);
   animation: nxcp-modal-in 0.12s ease-out;
 }
-.nxcp-thread-menu [role='menuitem'] {
+.nxcp-thread-menu button {
   padding: 8px 12px;
   border: 0;
   background: none;
@@ -459,8 +469,8 @@ const SHELL_CSS = `
   text-align: start;
   cursor: pointer;
 }
-.nxcp-thread-menu [role='menuitem']:hover { background: var(--nxcp-surface-2); }
-.nxcp-thread-menu [role='menuitem'][data-tone='danger'] { color: var(--nxcp-danger); }
+.nxcp-thread-menu button:hover { background: var(--nxcp-surface-2); }
+.nxcp-thread-menu button[data-tone='danger'] { color: var(--nxcp-danger); }
 .nxcp-thread-rename {
   width: 100%;
   min-width: 0;

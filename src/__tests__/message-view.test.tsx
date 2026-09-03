@@ -165,6 +165,16 @@ describe('answer body', () => {
     expect(document.querySelector('.nxcp-caret')).toBeNull()
   })
 
+  it('keeps the caret on the last line of the answer, not under it', () => {
+    mount(<MessageView turn={turn({ status: 'streaming', text: 'First.\n\nIt lost' })} />)
+    const answer = document.querySelector('.nxcp-answer') as HTMLElement
+    const last = answer.lastElementChild as HTMLElement
+    expect(last.tagName).toBe('P')
+    expect(last.textContent).toBe('It lost')
+    expect(last.lastElementChild?.className).toBe('nxcp-caret')
+    expect(answer.querySelectorAll('.nxcp-caret')).toHaveLength(1)
+  })
+
   it('hands the text to the host markdown renderer when there is one', () => {
     const renderMarkdown = vi.fn(() => <em data-testid='host-md'>rendered</em>)
     mount(<MessageView turn={turn({ status: 'streaming', text: '**bold**' })} />, {
@@ -172,6 +182,8 @@ describe('answer body', () => {
     })
     expect(screen.getByTestId('host-md')).toBeTruthy()
     expect(renderMarkdown).toHaveBeenCalledWith('**bold**', { streaming: true })
+    // A host fragment is opaque, so the caret follows it as a sibling the stylesheet pulls inline.
+    expect(document.querySelector('.nxcp-answer > .nxcp-caret')).toBeTruthy()
   })
 })
 

@@ -11,6 +11,7 @@ import type {
   PlanStep,
   RunState,
 } from '../types'
+import { PLAN_TOOL } from './trace-model'
 
 export function initialRunState(): RunState {
   return {
@@ -73,13 +74,18 @@ function applySummary(state: RunState, summary: CopilotRunSummary): Partial<RunS
   if (summary.executionMs !== undefined) patch.executionMs = summary.executionMs
   if (summary.resultData !== undefined) patch.resultData = summary.resultData
   if (summary.steps !== undefined) {
-    // Stored history knows lineage the stream may not have carried. A step the stream never saw,
-    // or a parent it never named, means the trace is being rebuilt rather than confirmed.
-    const rebuilt = summary.steps.some((step) => {
-      const seen = state.steps.find((entry) => entry.id === step.id)
-      return seen === undefined || (step.parentId !== undefined && seen.parentId === undefined)
-    })
-    patch.steps = summary.steps.reduce(upsertStep, state.steps)
+    // The stream shows make_plan as a running row; a replay never has it, since its stored output
+    // is the plan itself. Dropping it here keeps the finished and the replayed trace identical.
+    const live =
+      summary.plan === undefined
+        ? state.steps
+        : state.steps.filter((step) => step.tool !== PLAN_TOOL)
+    // Stored history fills in lineage the stream may not have carried; that is a confirmation.
+    // A stored call the stream never showed means live events were missed.
+    const rebuilt = summary.steps.some(
+      (step) => step.kind !== 'agent' && !live.some((entry) => entry.id === step.id),
+    )
+    patch.steps = summary.steps.reduce(upsertStep, live)
     if (rebuilt) patch.rebuilt = true
   }
   if (summary.plan !== undefined) {

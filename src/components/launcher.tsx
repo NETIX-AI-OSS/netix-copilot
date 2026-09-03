@@ -19,7 +19,7 @@ export function Launcher({ onOpen }: LauncherProps): ReactNode {
       type='button'
       className='nxcp-root nxcp-launcher'
       style={themeToCssVars(theme)}
-      aria-label={t('copilot.dock.label')}
+      aria-label={t('copilot.dock.open')}
       data-expanded={expanded ? 'true' : 'false'}
       onMouseEnter={() => setExpanded(true)}
       onMouseLeave={() => setExpanded(false)}
