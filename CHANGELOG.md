@@ -5,6 +5,44 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-09-03
+
+Four defects found by a read-only review of the host integration. No export, prop or host-facing
+class name changes.
+
+### Fixed
+
+- **Re-selecting the open thread no longer drops a live run.** Every rail row click goes to
+  `engine.selectThread`, and `loadThread` began by aborting the active reader and emptying the
+  turns — without sending `cancelTurn`, so a mis-click on the highlighted row lost the answer while
+  ml-engine kept spending on it. `selectThread` and `loadThread` are now a no-op when the id is the
+  open thread and the panel holds turns for it, a live run included. An empty panel, which is what
+  a failed load leaves, still refetches.
+- **A create that settles after the thread changed is dropped.** `send()` learns the thread id only
+  when the create resolves, so a deep link (`loadThread(T)`) landing in that window was overwritten
+  by the create's thread id, every streamed event was discarded against the emptied turns, and T's
+  transcript was filed under the new thread. The create is stamped with the thread sequence it
+  started under; a result or failure that comes back under a later one is dropped with a warning,
+  its stream never opened and the restored transcript untouched.
+- **The toast region is no longer a permanent `role="status"`.** Host suites poll
+  `queryByRole('status')` to wait for loaders, and the always-mounted empty region answered. The
+  region keeps `aria-live="polite"`, now with `aria-atomic`, so the first toast is still announced;
+  `role="status"` sits on `.nxcp-toast` only while one is showing.
+- **The rail's surface badge prints a name, not the wire value.** `web` / `mobile` / `embed` /
+  `api` go through `copilot.surface.*`; a value the SDK does not know draws no badge.
+
+### Added
+
+- `copilot.surface.web`, `.mobile`, `.embed`, `.api` (Web, Mobile, Embedded, API).
+- **`locale` adapter.** An optional BCP 47 tag for the history rail's time and date stamps.
+  Without it the browser locale applies, as before.
+- **Answer typography: list markers, GFM tables, key–value grids, lede.** `.nxcp-answer` sets the
+  type scale (14 px body in `--nxcp-text`, list markers a host preflight strips, GFM tables) for
+  the built-in renderer and a host `renderMarkdown` alike; `AnswerBlocks` then turns a
+  `label: value` list into `.nxcp-kv` (`.nxcp-kv-label`, `.nxcp-kv-value`), wraps a table in
+  `.nxcp-answer-scroll` with numeric cells as `.nxcp-answer-num`, and marks a short opening
+  paragraph `.nxcp-answer-lede` — once the stream has settled.
+
 ## [0.4.0] — 2026-09-03
 
 ### Added

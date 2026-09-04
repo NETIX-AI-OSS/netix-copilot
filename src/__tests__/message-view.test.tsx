@@ -187,6 +187,42 @@ describe('answer body', () => {
   })
 })
 
+describe('answer typography', () => {
+  it('typesets the built-in answer through the enhancer', () => {
+    mount(<MessageView turn={turn({ text: 'Live readings:\n\n- Supply fan: On' })} />)
+    const answer = document.querySelector('.nxcp-answer') as HTMLElement
+    expect(answer.firstElementChild?.className).toBe('nxcp-answer-lede')
+    expect(answer.querySelector(':scope > ul.nxcp-kv > li > .nxcp-kv-label')?.textContent).toBe(
+      'Supply fan:',
+    )
+  })
+
+  it('typesets a host renderer the same way, once its caret has gone', () => {
+    const renderMarkdown = () => (
+      <ul>
+        <li>Supply fan: On</li>
+      </ul>
+    )
+    const { rerender } = mount(<MessageView turn={turn({ status: 'streaming', text: 'x' })} />, {
+      renderMarkdown,
+    })
+    expect(document.querySelector('.nxcp-kv')).toBeNull()
+    expect(document.querySelector('.nxcp-answer')?.lastElementChild?.className).toBe('nxcp-caret')
+    rerender(
+      <CopilotProvider
+        config={{ baseUrl: 'https://x' }}
+        adapters={testAdapters({ renderMarkdown })}
+        transport={new QuietTransport()}
+      >
+        <MessageView turn={turn({ status: 'done', text: 'x' })} />
+      </CopilotProvider>,
+    )
+    expect(document.querySelector('.nxcp-answer > ul.nxcp-kv .nxcp-kv-value')?.textContent).toBe(
+      ' On',
+    )
+  })
+})
+
 describe('artifacts', () => {
   it('wraps every chart in a card titled after the chart', () => {
     const renderChart = vi.fn(() => <canvas data-testid='chart' />)

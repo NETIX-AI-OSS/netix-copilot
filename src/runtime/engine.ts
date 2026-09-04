@@ -211,14 +211,23 @@ export class CopilotEngine {
     if (this.snapshot.threadId !== undefined) input.threadId = this.snapshot.threadId
     if (scope !== undefined) input.scope = scope
 
+    // A thread opened while the create is in flight owns the panel; this turn is not on it.
+    const token = this.threadSeq
     let created
     try {
       created = await this.options.transport.createTurn(input)
     } catch (error) {
+      if (token !== this.threadSeq) return
       this.update({ sending: false, modelTierLocked: this.snapshot.threadId !== undefined })
       this.pushEvent({
         type: 'error',
         error: { message: describeError(error), retryable: true },
+      })
+      return
+    }
+    if (token !== this.threadSeq) {
+      this.options.logger?.warn('netix-copilot: turn created after the thread changed; dropped', {
+        turnId: created.turnId,
       })
       return
     }
@@ -281,6 +290,8 @@ export class CopilotEngine {
   // Point the engine at a stored thread and rebuild its history, so a deep link or a sidebar
   // click restores the plan, the charts and the result tables rather than an empty panel.
   async loadThread(threadId: string): Promise<void> {
+    // Re-selecting the open thread is a mis-click, not a reload: it must not drop a live run.
+    if (threadId === this.snapshot.threadId && this.snapshot.turns.length > 0) return
     this.abortActiveRun()
     this.forgetRunUrls()
     this.threadSeq += 1

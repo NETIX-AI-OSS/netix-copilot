@@ -4,6 +4,7 @@ import { useCopilotAdapters } from '../adapters/context'
 import type { CopilotTurnView } from '../runtime/engine'
 import { isRunActive, isRunFinished } from '../runtime/run-store'
 import { AnswerActions } from './answer-actions'
+import { AnswerBlocks } from './answer-blocks'
 import { ApprovalCard } from './approval-card'
 import { ArtifactCard } from './artifact-card'
 import { Markdown } from './markdown'
@@ -77,7 +78,7 @@ export function MessageView({
         <ReasoningTrace run={run} defaultOpen={streaming} />
 
         {run.text !== '' ? (
-          <div className='nxcp-answer'>
+          <AnswerBlocks>
             {renderMarkdown ? (
               <>
                 {renderMarkdown(run.text, { streaming })}
@@ -86,7 +87,7 @@ export function MessageView({
             ) : (
               <Markdown text={run.text} streaming={streaming} />
             )}
-          </div>
+          </AnswerBlocks>
         ) : null}
 
         {run.charts.map((chart) => (

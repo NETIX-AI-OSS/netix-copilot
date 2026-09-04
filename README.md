@@ -26,13 +26,13 @@ neither SWR nor react-query, bundles no chart library, and imports no stylesheet
 ## Install
 
 ```bash
-pnpm add github:NETIX-AI-OSS/netix-copilot#v0.4.0
+pnpm add github:NETIX-AI-OSS/netix-copilot#v0.4.1
 ```
 
 ```jsonc
 // package.json
 "dependencies": {
-  "netix-copilot": "github:NETIX-AI-OSS/netix-copilot#v0.4.0"
+  "netix-copilot": "github:NETIX-AI-OSS/netix-copilot#v0.4.1"
 }
 ```
 
@@ -118,6 +118,9 @@ useEffect(() => {
 `selectThread` fetches the thread and rebuilds its turns — plan, charts, result tables, tools and
 timing included — so a replayed answer renders through the same components as a live one. Use
 `engine.loadThread(id)` when you need to await it, and `state.threadLoading` while it is in flight.
+Selecting the thread that is already open is a no-op while the panel holds turns for it, so a
+click on the highlighted rail row cannot abort a live run; `startNewThread()` is how a panel is
+cleared.
 
 ### Modes: `min`, `dock` and `full`
 
@@ -283,6 +286,11 @@ through an `aria-live="polite"` region at most once a second, and every glyph ca
 status label. Rings and dots stop under `prefers-reduced-motion`. `PlanTimeline` and `RunBadges`
 remain exported as the legacy flat views.
 
+Beneath it, `.nxcp-answer` typesets the answer — list markers, `label: value` lists as a key–value
+grid (`.nxcp-kv`), GFM tables in a scroller with numeric cells right-aligned, a lede on a short
+opening paragraph — for the built-in renderer and a host `renderMarkdown` alike, since
+`AnswerBlocks` reads the rendered DOM once the stream has settled.
+
 ### Approvals
 
 An approval request is a `step_started` event whose step carries `status: "awaiting_approval"`,
@@ -313,6 +321,7 @@ Everything that differs between applications is injected. Everything that does n
 | `notify`               | optional                    | Route the SDK's small confirmations (copied, exported, deleted) through the host's toaster. Without it the SDK shows its own bottom-centre `ToastHost` pill.        |
 | `labels`               | optional                    | `{ tools?, agents? }` name overrides keyed by the raw ml-engine name, ahead of the `copilot.tool.*` / `copilot.agent.*` keys and the sentence-cased fallback.       |
 | `quickPrompts`         | optional                    | Starter chips for an empty conversation when the host does not pass them per panel.                                                                                 |
+| `locale`               | optional                    | BCP 47 tag for the history rail's time and date stamps. Without it the browser locale is used.                                                                      |
 
 `transformPrompt` receives `includeContext` in its context (see above), and `useNotify()` gives a
 host-rendered turn the same notifier the SDK uses.

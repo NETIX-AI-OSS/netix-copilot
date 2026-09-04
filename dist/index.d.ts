@@ -6,6 +6,8 @@ export type { AgentCardProps } from './components/agent-card';
 export { AgentCard } from './components/agent-card';
 export type { AnswerActionsProps } from './components/answer-actions';
 export { AnswerActions, groundingCounts } from './components/answer-actions';
+export type { AnswerBlocksProps } from './components/answer-blocks';
+export { AnswerBlocks } from './components/answer-blocks';
 export type { ApprovalCardProps } from './components/approval-card';
 export { ApprovalCard } from './components/approval-card';
 export type { ArtifactCardProps } from './components/artifact-card';

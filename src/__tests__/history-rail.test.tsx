@@ -10,6 +10,7 @@ import { ThreadList } from '../components/thread-list'
 import type { CopilotEngine } from '../runtime/engine'
 import type { CopilotTransport, CreatedTurn, ThreadPatch } from '../transport/types'
 import type { CopilotThread } from '../types'
+import { createFallbackTranslate } from '../ui/i18n'
 import { COPILOT_CSS } from '../ui/styles'
 import { testAdapters } from './helpers'
 
@@ -28,7 +29,7 @@ class ThreadTransport implements CopilotTransport {
     thread({ id: 'today', title: 'Today thread', updatedAt: NOW - 2 * HOUR, modelTier: 'high' }),
     thread({ id: 'yesterday', title: 'Yesterday thread', updatedAt: NOW - 26 * HOUR }),
     thread({ id: 'week', title: 'Week thread', updatedAt: NOW - 3 * DAY, surface: 'web' }),
-    thread({ id: 'earlier', title: 'Earlier thread', updatedAt: NOW - 20 * DAY }),
+    thread({ id: 'earlier', title: 'Earlier thread', updatedAt: NOW - 20 * DAY, surface: 'kiosk' }),
     thread({ id: 'pinned', title: 'Pinned thread', updatedAt: NOW - 40 * DAY, isPinned: true }),
     thread({
       id: 'long',
@@ -112,6 +113,12 @@ function titles(): string[] {
   return [...document.querySelectorAll('.nxcp-thread-title')].map((node) => node.textContent ?? '')
 }
 
+function stamp(title: string): string | undefined {
+  return (screen.getByText(title).closest('.nxcp-thread') as HTMLElement).querySelector(
+    '.nxcp-thread-time',
+  )?.textContent
+}
+
 function openMenu(title: string): HTMLElement {
   const row = screen.getByText(title).closest('.nxcp-thread-row') as HTMLElement
   fireEvent.click(row.querySelector('.nxcp-thread-kebab') as HTMLElement)
@@ -140,10 +147,6 @@ describe('HistoryRail', () => {
   it('stamps each row the way the reference does', async () => {
     mount(new ThreadTransport())
     await screen.findByText('Today thread')
-    const stamp = (title: string) =>
-      (screen.getByText(title).closest('.nxcp-thread') as HTMLElement).querySelector(
-        '.nxcp-thread-time',
-      )?.textContent
     expect(stamp('Today thread')).toMatch(/^\d{2}:\d{2}$/)
     expect(stamp('Yesterday thread')).toBe('Yesterday')
     expect(stamp('Week thread')).toBe(
@@ -154,12 +157,44 @@ describe('HistoryRail', () => {
     )
   })
 
+  it('formats the stamps in the locale adapter when one is given', async () => {
+    mount(new ThreadTransport(), {}, { locale: 'en-GB' })
+    await screen.findByText('Today thread')
+    const earlier = new Date(NOW - 20 * DAY)
+    const dayMonth = { day: 'numeric', month: 'short' } as const
+    expect(stamp('Earlier thread')).toBe(earlier.toLocaleDateString('en-GB', dayMonth))
+    expect(stamp('Earlier thread')).not.toBe(earlier.toLocaleDateString('en-US', dayMonth))
+    expect(stamp('Week thread')).toBe(
+      new Date(NOW - 3 * DAY).toLocaleDateString('en-GB', { weekday: 'short' }),
+    )
+    expect(stamp('Today thread')).toBe(
+      new Date(NOW - 2 * HOUR).toLocaleTimeString('en-GB', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+      }),
+    )
+  })
+
   it('shows the tier and surface as small chips', async () => {
     mount(new ThreadTransport())
     await screen.findByText('Today thread')
     expect(screen.getByText('High 5x').className).toBe('nxcp-badge')
-    expect(screen.getByText('web').className).toBe('nxcp-badge')
+    expect(screen.getByText('Web').className).toBe('nxcp-badge')
     expect(screen.queryByText('Base 1x')).toBeNull()
+    // The raw wire value never prints, and a surface the SDK does not know draws no badge.
+    expect(screen.queryByText('web')).toBeNull()
+    expect(screen.queryByText('kiosk')).toBeNull()
+    expect(
+      screen.getByText('Earlier thread').closest('.nxcp-thread')?.querySelector('.nxcp-badge'),
+    ).toBeNull()
+  })
+
+  it('names the surface through the translate adapter', async () => {
+    const t = createFallbackTranslate({ 'copilot.surface.web': 'Browser' })
+    mount(new ThreadTransport(), {}, { t })
+    await screen.findByText('Today thread')
+    expect(screen.getByText('Browser').className).toBe('nxcp-badge')
   })
 
   it('searches titles client-side and says when nothing matches', async () => {

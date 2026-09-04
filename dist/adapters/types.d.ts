@@ -95,6 +95,7 @@ export interface CopilotAdapters {
     notify?: (notification: CopilotNotification) => void;
     labels?: CopilotLabels;
     quickPrompts?: readonly string[];
+    locale?: string;
     logger?: {
         warn: (message: string, detail?: unknown) => void;
         error: (message: string, detail?: unknown) => void;

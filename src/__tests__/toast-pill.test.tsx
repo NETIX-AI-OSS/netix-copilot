@@ -57,11 +57,16 @@ describe('ToastHost', () => {
     vi.useRealTimers()
   })
 
-  it('keeps an empty polite live region mounted so the first toast is announced', () => {
+  // Hosts poll queryByRole('status') to wait for loaders, so an empty region must not be one.
+  it('keeps an empty polite live region mounted without posing as a status widget', () => {
     mount()
-    const region = screen.getByRole('status')
-    expect(region.getAttribute('aria-live')).toBe('polite')
+    expect(screen.queryByRole('status')).toBeNull()
+    const region = document.querySelector('.nxcp-toast-region')
+    expect(region?.getAttribute('aria-live')).toBe('polite')
+    expect(region?.getAttribute('aria-atomic')).toBe('true')
     expect(pill()).toBeNull()
+    act(() => notificationStore.show({ message: 'Answer copied' }))
+    expect(screen.getByRole('status')).toBe(pill())
   })
 
   it('shows a plain notification for three seconds', () => {

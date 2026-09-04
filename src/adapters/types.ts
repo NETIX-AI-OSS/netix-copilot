@@ -156,6 +156,8 @@ export interface CopilotAdapters {
   labels?: CopilotLabels
   // Starter prompts for an empty conversation, when the host does not pass them per panel.
   quickPrompts?: readonly string[]
+  // BCP 47 tag for the history rail's timestamps. Without it the browser locale is used.
+  locale?: string
   logger?: {
     warn: (message: string, detail?: unknown) => void
     error: (message: string, detail?: unknown) => void
