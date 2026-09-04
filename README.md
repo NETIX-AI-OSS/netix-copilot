@@ -286,6 +286,11 @@ through an `aria-live="polite"` region at most once a second, and every glyph ca
 status label. Rings and dots stop under `prefers-reduced-motion`. `PlanTimeline` and `RunBadges`
 remain exported as the legacy flat views.
 
+Beneath it, `.nxcp-answer` typesets the answer — list markers, `label: value` lists as a key–value
+grid (`.nxcp-kv`), GFM tables in a scroller with numeric cells right-aligned, a lede on a short
+opening paragraph — for the built-in renderer and a host `renderMarkdown` alike, since
+`AnswerBlocks` reads the rendered DOM once the stream has settled.
+
 ### Approvals
 
 An approval request is a `step_started` event whose step carries `status: "awaiting_approval"`,

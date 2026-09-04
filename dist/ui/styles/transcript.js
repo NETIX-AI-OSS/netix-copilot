@@ -83,20 +83,63 @@ exports.TRANSCRIPT_CSS = `
 }
 .nxcp-answer {
   max-width: 860px;
-  font-size: 13px;
-  line-height: 1.65;
-  color: var(--nxcp-text-muted);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--nxcp-text);
   text-wrap: pretty;
   overflow-wrap: anywhere;
 }
-.nxcp-answer p {
-  margin: 0 0 8px;
+.nxcp-answer > :first-child {
+  margin-block-start: 0;
 }
+.nxcp-answer > :last-child,
 .nxcp-answer p:last-child {
   margin-block-end: 0;
 }
+.nxcp-answer p {
+  margin: 0 0 10px;
+}
+.nxcp-answer .nxcp-answer-lede {
+  font-size: 15px;
+  color: var(--nxcp-text);
+}
+.nxcp-answer h1,
+.nxcp-answer h2,
+.nxcp-answer h3 {
+  margin: 14px 0 6px;
+  color: var(--nxcp-text);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.nxcp-answer h3 {
+  font-size: 14px;
+}
+.nxcp-answer ul,
+.nxcp-answer ol {
+  margin: 0 0 10px;
+  padding-inline-start: 22px;
+}
+.nxcp-answer ul {
+  list-style: disc;
+}
+.nxcp-answer ol {
+  list-style: decimal;
+}
+.nxcp-answer li + li {
+  margin-block-start: 4px;
+}
+.nxcp-answer li > ul,
+.nxcp-answer li > ol {
+  margin-block: 0;
+  padding-inline-start: 16px;
+}
 .nxcp-answer strong {
   color: var(--nxcp-text);
+  font-weight: 600;
+}
+.nxcp-answer em {
+  font-style: italic;
 }
 .nxcp-answer a {
   color: var(--nxcp-accent);
@@ -105,35 +148,21 @@ exports.TRANSCRIPT_CSS = `
 .nxcp-answer a:hover {
   text-decoration: underline;
 }
-.nxcp-answer ul,
-.nxcp-answer ol {
-  margin: 0 0 8px;
-  padding-inline-start: 20px;
-}
-.nxcp-answer h1,
-.nxcp-answer h2,
-.nxcp-answer h3 {
-  margin: 12px 0 6px;
-  color: var(--nxcp-text);
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 1.3;
-}
 .nxcp-answer blockquote {
-  margin: 0 0 8px;
+  margin: 0 0 10px;
   padding-inline-start: 10px;
   border-inline-start: 3px solid var(--nxcp-border);
-  color: var(--nxcp-text-tertiary);
+  color: var(--nxcp-text-muted);
 }
 .nxcp-answer code {
   font-family: var(--nxcp-mono);
-  font-size: 12px;
+  font-size: 12.5px;
   background: var(--nxcp-surface-2);
   border-radius: 4px;
   padding: 1px 4px;
 }
 .nxcp-answer pre {
-  margin: 0 0 8px;
+  margin: 0 0 10px;
   padding: 10px;
   border: 1px solid var(--nxcp-border);
   border-radius: var(--nxcp-radius-md);
@@ -143,11 +172,81 @@ exports.TRANSCRIPT_CSS = `
 .nxcp-answer pre code {
   background: transparent;
   padding: 0;
+  font-size: 12px;
 }
 .nxcp-answer hr {
   border: 0;
   border-block-start: 1px solid var(--nxcp-border);
-  margin: 8px 0;
+  margin: 10px 0;
+}
+.nxcp-answer-scroll {
+  max-width: 100%;
+  margin: 0 0 10px;
+  overflow-x: auto;
+}
+.nxcp-answer table {
+  width: 100%;
+  margin: 0 0 10px;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+.nxcp-answer-scroll > table {
+  margin: 0;
+}
+.nxcp-answer th,
+.nxcp-answer td {
+  padding: 6px 10px;
+  text-align: start;
+  vertical-align: top;
+}
+.nxcp-answer th {
+  background: var(--nxcp-surface-2);
+  color: var(--nxcp-text);
+  font-weight: 600;
+}
+.nxcp-answer td {
+  border-block-start: 1px solid var(--nxcp-border);
+}
+.nxcp-answer .nxcp-answer-num {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+.nxcp-answer .nxcp-kv {
+  display: grid;
+  grid-template-columns: fit-content(45%) minmax(0, 1fr);
+  column-gap: 14px;
+  margin: 0 0 10px;
+  padding: 2px 12px;
+  list-style: none;
+  border: 1px solid var(--nxcp-border);
+  border-radius: var(--nxcp-radius-md);
+  background: var(--nxcp-surface-2);
+}
+.nxcp-answer .nxcp-kv > li {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: baseline;
+  margin: 0;
+  padding: 6px 0;
+  border-block-start: 1px solid var(--nxcp-border);
+}
+.nxcp-answer .nxcp-kv > li:first-child {
+  border-block-start: 0;
+}
+.nxcp-kv-label {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--nxcp-text-muted);
+}
+.nxcp-answer .nxcp-kv-label strong {
+  color: inherit;
+}
+.nxcp-kv-value {
+  min-width: 0;
+  color: var(--nxcp-text);
+  font-variant-numeric: tabular-nums;
 }
 /* A host renderer ends in a block, so its caret sits beside it only if that block goes inline. */
 .nxcp-answer:has(> .nxcp-caret) > :nth-last-child(2) {

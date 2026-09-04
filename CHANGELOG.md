@@ -36,6 +36,12 @@ class name changes.
 - `copilot.surface.web`, `.mobile`, `.embed`, `.api` (Web, Mobile, Embedded, API).
 - **`locale` adapter.** An optional BCP 47 tag for the history rail's time and date stamps.
   Without it the browser locale applies, as before.
+- **Answer typography: list markers, GFM tables, key–value grids, lede.** `.nxcp-answer` sets the
+  type scale (14 px body in `--nxcp-text`, list markers a host preflight strips, GFM tables) for
+  the built-in renderer and a host `renderMarkdown` alike; `AnswerBlocks` then turns a
+  `label: value` list into `.nxcp-kv` (`.nxcp-kv-label`, `.nxcp-kv-value`), wraps a table in
+  `.nxcp-answer-scroll` with numeric cells as `.nxcp-answer-num`, and marks a short opening
+  paragraph `.nxcp-answer-lede` — once the stream has settled.
 
 ## [0.4.0] — 2026-09-03
 
