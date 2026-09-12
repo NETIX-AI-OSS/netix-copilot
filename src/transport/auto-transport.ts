@@ -90,6 +90,17 @@ export class AutoTransport implements CopilotTransport {
     }
   }
 
+  async fetchThreadAccess(threadId: string, signal?: AbortSignal): Promise<{ readOnly: boolean }> {
+    const target = this.resolved ?? this.streaming
+    if (!target.fetchThreadAccess) return { readOnly: false }
+    try {
+      return await target.fetchThreadAccess(threadId, signal)
+    } catch (error) {
+      if (isRouteMissing(error)) return { readOnly: false }
+      throw error
+    }
+  }
+
   // Thread housekeeping only the copilot contract serves. A transport without it throws the same
   // missing-route error the route itself would, so the engine reverts its optimistic list edit.
   updateThread(threadId: string, patch: ThreadPatch, signal?: AbortSignal): Promise<CopilotThread> {

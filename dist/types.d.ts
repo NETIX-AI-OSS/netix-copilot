@@ -24,6 +24,7 @@ export interface PlanStep {
     status: StepStatus;
     kind?: StepKind;
     argsSummary?: string;
+    arguments?: JsonObject;
     durationMs?: number;
     detail?: string;
     agent?: string;
@@ -170,6 +171,7 @@ export interface CopilotThread {
     isPinned?: boolean;
     surface?: string;
     createdAt?: number;
+    readOnly?: boolean;
 }
 export interface RunState {
     status: RunStatus;
@@ -189,11 +191,48 @@ export interface RunState {
     executionMs?: number;
     resultData?: CopilotResultData;
     error?: CopilotErrorPayload;
+    cancellation?: {
+        status: 'requested' | 'failed';
+        message?: string;
+    };
     lastEventId?: string;
     startedAt?: number;
     rebuilt?: boolean;
     offline: boolean;
 }
+export type CopilotLifecycleEvent = {
+    type: 'dock_opened';
+    mode: 'dock' | 'full';
+} | {
+    type: 'message_sent';
+    threadId?: string;
+    modelTier: ModelTier;
+    surface: 'web' | 'mobile' | 'embed' | 'api';
+    contextIncluded: boolean;
+} | {
+    type: 'run_completed';
+    threadId: string;
+    turnId: string;
+    modelTier?: ModelTier;
+    durationMs?: number;
+    transport?: 'sse' | 'agentic';
+} | {
+    type: 'run_failed';
+    threadId?: string;
+    turnId?: string;
+    modelTier?: ModelTier;
+    durationMs?: number;
+    transport?: 'sse' | 'agentic';
+    code?: string;
+    cause?: CopilotErrorCause;
+} | {
+    type: 'run_slow';
+    threadId: string;
+    turnId: string;
+    modelTier?: ModelTier;
+    elapsedMs: number;
+    transport?: 'sse' | 'agentic';
+};
 export interface SendTurnInput {
     prompt: string;
     threadId?: string;

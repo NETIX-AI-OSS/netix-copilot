@@ -39,6 +39,14 @@ class RecordingTransport implements CopilotTransport {
   async listThreads() {
     return []
   }
+
+  async fetchThread() {
+    return []
+  }
+
+  async fetchThreadAccess() {
+    return { readOnly: true }
+  }
 }
 
 let engineRef: CopilotEngine | undefined
@@ -161,7 +169,16 @@ describe('textarea', () => {
 })
 
 describe('Send and Stop', () => {
-  it('is one button that reads Stop while a run is live and cancels it', async () => {
+  it('replaces the composer with a read-only briefing notice', async () => {
+    mount()
+    await act(async () => {
+      await engineRef?.loadThread('shared-briefing')
+    })
+    expect(screen.getByText('This briefing was shared with you as read-only.')).toBeTruthy()
+    expect(screen.queryByLabelText('Message')).toBeNull()
+  })
+
+  it('shows cancellation as requested until the server confirms it', async () => {
     const transport = mount()
     fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'go' } })
     await act(async () => {
@@ -177,8 +194,9 @@ describe('Send and Stop', () => {
       fireEvent.click(stop)
     })
     expect(transport.cancelled).toEqual(['t1'])
-    expect(engineRef?.getSnapshot().turns[0]?.run.status).toBe('cancelled')
-    expect(screen.getByRole('button', { name: 'Send' })).toBeTruthy()
+    expect(engineRef?.getSnapshot().turns[0]?.run.status).toBe('creating')
+    expect(engineRef?.getSnapshot().turns[0]?.run.cancellation?.status).toBe('requested')
+    expect(screen.getByRole('button', { name: 'Stopping…' })).toBeTruthy()
   })
 
   it('keeps the tier picker beside the primary button', () => {

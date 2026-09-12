@@ -31,6 +31,8 @@ export interface CopilotConfig extends CopilotTransportConfig {
   resumeDelayMs?: number
   logger?: CopilotLogger
   conversationSurface?: 'web' | 'mobile' | 'embed' | 'api'
+  // A single privacy-safe event fires when a live run crosses this duration. Defaults to 10 s.
+  slowRunThresholdMs?: number
 }
 
 interface CopilotContextValue {
@@ -73,6 +75,12 @@ export function CopilotProvider({
         ...(config.resumeDelayMs === undefined ? {} : { resumeDelayMs: config.resumeDelayMs }),
         ...(config.logger ? { logger: config.logger } : {}),
         ...(config.conversationSurface ? { conversationSurface: config.conversationSurface } : {}),
+        ...(config.slowRunThresholdMs === undefined
+          ? {}
+          : { slowRunThresholdMs: config.slowRunThresholdMs }),
+        ...(adapters.onLifecycleEvent === undefined
+          ? {}
+          : { onLifecycleEvent: adapters.onLifecycleEvent }),
       }),
   )
 
@@ -158,7 +166,10 @@ export function useCopilotSend(): (prompt: string) => void {
       includeContext: contextEnabled,
       ...(threadId === undefined ? {} : { threadId }),
     })
-    void engine.send(display, buildScope(adapters.pageContext), { wireText: wire })
+    void engine.send(display, buildScope(adapters.pageContext), {
+      wireText: wire,
+      contextIncluded: contextEnabled,
+    })
   }
 }
 
@@ -192,10 +203,9 @@ export function useCopilotRegenerate(): (turnId: string) => void {
   return (turnId: string) => {
     const turn = engine.getSnapshot().turns.find((entry) => entry.id === turnId)
     if (!turn) return
-    void engine.send(
-      turn.prompt,
-      buildScope(adapters.pageContext),
-      turn.wirePrompt === undefined ? undefined : { wireText: turn.wirePrompt },
-    )
+    void engine.send(turn.prompt, buildScope(adapters.pageContext), {
+      ...(turn.wirePrompt === undefined ? {} : { wireText: turn.wirePrompt }),
+      contextIncluded: engine.getSnapshot().contextEnabled,
+    })
   }
 }

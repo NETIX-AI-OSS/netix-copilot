@@ -98,8 +98,8 @@ export function resetSyntheticStepCounter(): void {
   syntheticStepCounter = 0
 }
 
-// execution_log entries from ml-engine are { tool, call_id, iteration, arguments, output }, so
-// `arguments` arrives as an object and has to be flattened into a one-line summary here.
+// A compact summary keeps ordinary trace rows readable. Approval cards separately retain the
+// complete structured object, because approving from truncated text is unsafe.
 function summarizeArguments(value: unknown): string | undefined {
   if (typeof value === 'string') return value === '' ? undefined : value
   if (!isRecord(value)) return undefined
@@ -149,10 +149,13 @@ function decodeStep(source: Record<string, unknown>, fallbackStatus: StepStatus)
     status: asStatus(pick(nested, ['status', 'state']), fallbackStatus),
   }
   if (tool !== undefined) step.tool = tool
+  const rawArguments = pick(nested, ['arguments', 'args', 'parameters'])
   const argsSummary = summarizeArguments(
-    pick(nested, ['args_summary', 'argsSummary', 'arguments_summary', 'args', 'arguments']),
+    pick(nested, ['args_summary', 'argsSummary', 'arguments_summary']) ?? rawArguments,
   )
   if (argsSummary !== undefined) step.argsSummary = argsSummary
+  const completeArguments = asJsonObject(rawArguments)
+  if (completeArguments !== undefined) step.arguments = completeArguments
   const durationMs =
     asNumber(pick(nested, ['duration_ms', 'durationMs'])) ??
     // A bare `duration` is seconds by convention on this backend.

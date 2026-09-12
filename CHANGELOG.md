@@ -5,6 +5,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.2] — 2026-09-12
+
+### Fixed
+
+- Restoring a conversation whose newest turn is still active now resumes through authoritative
+  turn-detail polling seeded from the displayed transcript. Partial text is not repeated, and a
+  consumer racing with a later thread selection cannot write into the newly selected thread.
+- Stop keeps the run active until ml-engine confirms cancellation. Rejected cancellation requests
+  are visible and retryable, the SSE transport no longer swallows them, and stopping while create
+  is in flight still cancels a late-created server run.
+- Approval cards render the complete structured `arguments` object supplied by ml-engine, while
+  retaining `arguments_summary` compatibility for older deployments.
+- Briefing recipients honor conversation `read_only` access: the transcript remains usable, while
+  reply, cancellation, approval, regeneration, rename, pin, and delete controls are unavailable.
+
+### Added
+
+- `onLifecycleEvent` reports privacy-safe `dock_opened`, `message_sent`, `run_completed`,
+  `run_failed`, and `run_slow` events. Prompt and answer text are excluded, and restored history
+  never emits live-run outcomes. `slowRunThresholdMs` configures the slow threshold (10 s default).
+
 ## [0.4.1] — 2026-09-03
 
 Four defects found by a read-only review of the host integration. No export, prop or host-facing

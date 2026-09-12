@@ -25,6 +25,8 @@ class FakeTransport implements CopilotTransport {
   createCalls: SendTurnInput[] = []
   consumeCalls: ConsumeRunOptions[] = []
   cancelled: string[] = []
+  cancelError: Error | undefined
+  cancelGate: Promise<void> | undefined
   createResult: CreatedTurn = { turnId: 't1', threadId: 'th1' }
   createError: Error | undefined
   // Settled by the test, so a create can be held open while the panel moves elsewhere.
@@ -32,6 +34,7 @@ class FakeTransport implements CopilotTransport {
   thread: CopilotTranscriptTurn[] = []
   fetchCalls: string[] = []
   threadError: Error | undefined
+  readOnly = false
   threads: CopilotThread[] = []
   updated: Array<[string, ThreadPatch]> = []
   updateError: Error | undefined
@@ -57,6 +60,8 @@ class FakeTransport implements CopilotTransport {
 
   async cancelTurn(turnId: string): Promise<void> {
     this.cancelled.push(turnId)
+    await this.cancelGate
+    if (this.cancelError) throw this.cancelError
   }
 
   async respondToApproval(): Promise<void> {
@@ -72,6 +77,10 @@ class FakeTransport implements CopilotTransport {
     if (this.threadError) throw this.threadError
     return this.thread
   }
+
+  fetchThreadAccess = async (): Promise<{ readOnly: boolean }> => ({
+    readOnly: this.readOnly,
+  })
 
   updateThread = async (threadId: string, patch: ThreadPatch): Promise<CopilotThread> => {
     this.updated.push([threadId, patch])
@@ -347,6 +356,62 @@ describe('CopilotEngine thread transcripts', () => {
     expect(engine.getSnapshot().threadLoading).toBe(false)
   })
 
+  it('resumes an active restored turn from its displayed snapshot', async () => {
+    const { engine, transport } = makeEngine()
+    const active: CopilotTranscriptTurn = {
+      ...transcript[0]!,
+      id: 't-live',
+      run: {
+        ...initialRunState(),
+        status: 'streaming',
+        turnId: 't-live',
+        text: 'partial',
+      },
+    }
+    transport.thread = [active]
+    await engine.loadThread('th1')
+
+    expect(transport.consumeCalls).toHaveLength(1)
+    expect(transport.consumeCalls[0]?.restoredState).toEqual(active.run)
+    transport.emit({ event: { type: 'message_delta', text: ' answer' } })
+    expect(engine.getSnapshot().turns[0]?.run.text).toBe('partial answer')
+  })
+
+  it('drops a restored consumer event that races with a newer thread selection', async () => {
+    const { engine, transport } = makeEngine()
+    transport.thread = [
+      {
+        ...transcript[0]!,
+        id: 't-live',
+        run: { ...initialRunState(), status: 'streaming', turnId: 't-live', text: 'partial' },
+      },
+    ]
+    await engine.loadThread('th1')
+    const stale = transport.consumeCalls[0]
+    transport.thread = transcript
+    await engine.loadThread('th2')
+    stale?.onEvent({ event: { type: 'message_delta', text: ' stale' } })
+    expect(engine.getSnapshot().threadId).toBe('th2')
+    expect(engine.getSnapshot().turns[0]?.run.text).toBe('earlier answer')
+  })
+
+  it('blocks sends and mutations on a shared read-only briefing thread', async () => {
+    const { engine, transport } = makeEngine()
+    transport.thread = transcript
+    transport.readOnly = true
+    await engine.loadThread('th1')
+    await engine.send('try to reply')
+    engine.cancel()
+    await engine.approve('step-1', true)
+    await engine.updateThread('th1', { title: 'mine' })
+    await engine.deleteThread('th1')
+    expect(engine.getSnapshot().threadReadOnly).toBe(true)
+    expect(transport.createCalls).toEqual([])
+    expect(transport.cancelled).toEqual([])
+    expect(transport.updated).toEqual([])
+    expect(transport.deleted).toEqual([])
+  })
+
   it('flags the fetch while it is in flight', async () => {
     const { engine, transport } = makeEngine()
     transport.thread = transcript
@@ -478,13 +543,19 @@ describe('CopilotEngine thread transcripts', () => {
 })
 
 describe('CopilotEngine cancellation', () => {
-  it('aborts the reader and marks the run cancelled', async () => {
+  it('keeps reading and marks cancellation requested until the server confirms it', async () => {
     const { engine, transport } = makeEngine()
     await engine.send('hello')
     transport.emit({ event: { type: 'run_started', turnId: 't1' } })
     engine.cancel()
-    expect(transport.consumeCalls[0]?.signal.aborted).toBe(true)
-    expect(engine.getSnapshot().turns[0]?.run.status).toBe('cancelled')
+    expect(transport.consumeCalls[0]?.signal.aborted).toBe(false)
+    expect(engine.getSnapshot().turns[0]?.run).toMatchObject({
+      status: 'streaming',
+      cancellation: { status: 'requested' },
+    })
+    transport.emit({ event: { type: 'cancelled' } })
+    expect(engine.getSnapshot().turns[0]?.run).toMatchObject({ status: 'cancelled' })
+    expect(engine.getSnapshot().turns[0]?.run.cancellation).toBeUndefined()
   })
 
   it('tells the backend to cancel the turn it knows about', async () => {
@@ -500,6 +571,70 @@ describe('CopilotEngine cancellation', () => {
     const { engine, transport } = makeEngine()
     engine.cancel()
     expect(transport.cancelled).toEqual([])
+  })
+
+  it('surfaces a rejected cancellation and leaves the run active', async () => {
+    const warn = vi.fn()
+    const { engine, transport } = makeEngine({ logger: { warn, error: vi.fn() } })
+    transport.cancelError = new Error('gateway unavailable')
+    await engine.send('hello')
+    transport.emit({ event: { type: 'run_started', turnId: 't1' } })
+    engine.cancel()
+    await flush()
+    expect(engine.getSnapshot().turns[0]?.run).toMatchObject({
+      status: 'streaming',
+      cancellation: {
+        status: 'failed',
+        message: 'Cancellation request failed: gateway unavailable The run is still active.',
+      },
+    })
+    expect(transport.consumeCalls[0]?.signal.aborted).toBe(false)
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('cancel request failed'),
+      expect.any(Error),
+    )
+  })
+
+  it('does not overwrite a terminal event when cancel rejection loses the race', async () => {
+    const { engine, transport } = makeEngine()
+    let rejectCancel: () => void = () => undefined
+    transport.cancelGate = new Promise((resolve) => {
+      rejectCancel = resolve
+    })
+    transport.cancelError = new Error('already finished')
+    await engine.send('hello')
+    transport.emit({ event: { type: 'run_started', turnId: 't1' } })
+    engine.cancel()
+    transport.emit({ event: { type: 'done', turnId: 't1' } })
+    rejectCancel()
+    await flush()
+    expect(engine.getSnapshot().turns[0]?.run.status).toBe('done')
+    expect(engine.getSnapshot().turns[0]?.run.cancellation).toBeUndefined()
+  })
+
+  it('cancels a create that resolves after the user stopped and switched threads', async () => {
+    const { engine, transport } = makeEngine()
+    let finishCreate: () => void = () => undefined
+    transport.createGate = new Promise((resolve) => {
+      finishCreate = resolve
+    })
+    transport.createResult = { turnId: 'late-turn', threadId: 'late-thread' }
+    const sending = engine.send('hello')
+    engine.cancel()
+    transport.thread = [
+      {
+        id: 'stored',
+        prompt: 'earlier',
+        createdAt: 1,
+        run: { ...initialRunState(), status: 'done', text: 'answer' },
+      },
+    ]
+    await engine.loadThread('th1')
+    finishCreate()
+    await sending
+    await flush()
+    expect(transport.cancelled).toEqual(['late-turn'])
+    expect(engine.getSnapshot().threadId).toBe('th1')
   })
 })
 
@@ -545,6 +680,61 @@ describe('CopilotEngine idempotency', () => {
     expect(transport.createCalls).toHaveLength(2)
     expect(transport.createCalls[0]?.idempotencyKey).not.toBe(
       transport.createCalls[1]?.idempotencyKey,
+    )
+  })
+})
+
+describe('CopilotEngine lifecycle analytics', () => {
+  it('reports sends and live terminal outcomes without prompt or answer text', async () => {
+    const onLifecycleEvent = vi.fn()
+    const { engine, transport } = makeEngine({ onLifecycleEvent, now: () => 12_000 })
+    await engine.send('private question', { route: '/assets/17' }, { contextIncluded: true })
+    transport.emit({ event: { type: 'run_started', turnId: 't1', startedAt: 10_000 } })
+    transport.emit({ event: { type: 'message_delta', text: 'private answer' } })
+    transport.emit({ event: { type: 'done', turnId: 't1' } })
+
+    expect(onLifecycleEvent).toHaveBeenNthCalledWith(1, {
+      type: 'message_sent',
+      modelTier: 'base',
+      surface: 'web',
+      contextIncluded: true,
+    })
+    expect(onLifecycleEvent).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        type: 'run_completed',
+        threadId: 'th1',
+        turnId: 't1',
+        durationMs: 2000,
+      }),
+    )
+    expect(JSON.stringify(onLifecycleEvent.mock.calls)).not.toContain('private question')
+    expect(JSON.stringify(onLifecycleEvent.mock.calls)).not.toContain('private answer')
+  })
+
+  it('does not report restored-history completion as a fresh run', async () => {
+    const onLifecycleEvent = vi.fn()
+    const { engine, transport } = makeEngine({ onLifecycleEvent })
+    transport.thread = [
+      {
+        id: 't-old',
+        prompt: 'earlier',
+        createdAt: 1,
+        run: { ...initialRunState(), status: 'streaming', turnId: 't-old', text: 'partial' },
+      },
+    ]
+    await engine.loadThread('th-old')
+    transport.emit({ event: { type: 'done', turnId: 't-old' } })
+    expect(onLifecycleEvent).not.toHaveBeenCalled()
+  })
+
+  it('reports a slow live run once', async () => {
+    const onLifecycleEvent = vi.fn()
+    const { engine } = makeEngine({ onLifecycleEvent, slowRunThresholdMs: 5 })
+    await engine.send('hello')
+    await new Promise((resolve) => setTimeout(resolve, 15))
+    expect(onLifecycleEvent.mock.calls.filter(([event]) => event.type === 'run_slow')).toHaveLength(
+      1,
     )
   })
 })
@@ -647,10 +837,10 @@ describe('CopilotEngine stream resumption', () => {
     expect(engine.getSnapshot().turns[0]?.run.error?.retryable).toBe(true)
   })
 
-  it('does not retry after the caller aborted', async () => {
+  it('does not retry after the active thread is abandoned', async () => {
     const { engine, transport } = makeEngine()
     await engine.send('hello')
-    engine.cancel()
+    engine.startNewThread()
     await flush()
     expect(transport.consumeCalls).toHaveLength(1)
   })

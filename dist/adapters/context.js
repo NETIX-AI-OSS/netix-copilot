@@ -34,6 +34,12 @@ function CopilotProvider({ config, adapters, transport, children, }) {
         ...(config.resumeDelayMs === undefined ? {} : { resumeDelayMs: config.resumeDelayMs }),
         ...(config.logger ? { logger: config.logger } : {}),
         ...(config.conversationSurface ? { conversationSurface: config.conversationSurface } : {}),
+        ...(config.slowRunThresholdMs === undefined
+            ? {}
+            : { slowRunThresholdMs: config.slowRunThresholdMs }),
+        ...(adapters.onLifecycleEvent === undefined
+            ? {}
+            : { onLifecycleEvent: adapters.onLifecycleEvent }),
     }));
     (0, react_1.useEffect)(() => {
         engine.retain();
@@ -97,7 +103,10 @@ function useCopilotSend() {
             includeContext: contextEnabled,
             ...(threadId === undefined ? {} : { threadId }),
         });
-        void engine.send(display, (0, types_1.buildScope)(adapters.pageContext), { wireText: wire });
+        void engine.send(display, (0, types_1.buildScope)(adapters.pageContext), {
+            wireText: wire,
+            contextIncluded: contextEnabled,
+        });
     };
 }
 // The history rail's kebab, bound to the engine. The engine already reverts its optimistic list
@@ -123,6 +132,9 @@ function useCopilotRegenerate() {
         const turn = engine.getSnapshot().turns.find((entry) => entry.id === turnId);
         if (!turn)
             return;
-        void engine.send(turn.prompt, (0, types_1.buildScope)(adapters.pageContext), turn.wirePrompt === undefined ? undefined : { wireText: turn.wirePrompt });
+        void engine.send(turn.prompt, (0, types_1.buildScope)(adapters.pageContext), {
+            ...(turn.wirePrompt === undefined ? {} : { wireText: turn.wirePrompt }),
+            contextIncluded: engine.getSnapshot().contextEnabled,
+        });
     };
 }

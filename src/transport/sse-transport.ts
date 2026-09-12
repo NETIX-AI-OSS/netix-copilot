@@ -14,7 +14,7 @@ import {
   requestJson,
 } from './http'
 import type { RunSnapshot } from './run-diff'
-import { decodeCursor, diffRunSnapshot, isTerminalStatus } from './run-diff'
+import { decodeCursor, diffRunSnapshot, isTerminalStatus, restoredRunCursor } from './run-diff'
 import { readSseStream, SseParser } from './sse'
 import type { CopilotRunRow } from './transcript'
 import { readRunSummary, turnFromRow } from './transcript'
@@ -120,6 +120,8 @@ function threadFromRow(row: Record<string, unknown>): CopilotThread {
   if (surface !== undefined) thread.surface = surface
   const createdAt = readTimestamp(row, ['created_on', 'created_at', 'createdAt'])
   if (createdAt !== undefined) thread.createdAt = createdAt
+  const readOnly = row.read_only ?? row.readOnly
+  if (typeof readOnly === 'boolean') thread.readOnly = readOnly
   return thread
 }
 
@@ -170,7 +172,7 @@ export class SseTransport implements CopilotTransport {
   async cancelTurn(turnId: string): Promise<void> {
     await request(this.config, fillTemplate(this.endpoints.cancelTurn, { turnId }), {
       method: 'POST',
-    }).catch(() => undefined)
+    })
   }
 
   // ml-engine accepts either key and prefers `approved` when both arrive; sending both keeps the
@@ -196,6 +198,11 @@ export class SseTransport implements CopilotTransport {
         ? payload.results
         : []
     return rows.filter(isRecord).map((row, index) => turnFromRow(row, threadId, index))
+  }
+
+  async fetchThreadAccess(threadId: string, signal?: AbortSignal): Promise<{ readOnly: boolean }> {
+    const payload = await this.readOrEmpty<unknown>(this.threadPath(threadId), signal)
+    return { readOnly: isRecord(payload) && payload.read_only === true }
   }
 
   async listThreads(signal?: AbortSignal): Promise<CopilotThread[]> {
@@ -268,6 +275,13 @@ export class SseTransport implements CopilotTransport {
 
   async consumeRun(options: ConsumeRunOptions): Promise<void> {
     options.onTransportChange?.('sse')
+    // Transcript rows do not persist the Redis event id needed for an exact SSE resume. Poll the
+    // turn detail from a cursor seeded by the restored state, which is both authoritative and
+    // duplicate-safe, then keep polling until its terminal database status is visible.
+    if (options.restoredState !== undefined) {
+      await this.consumeByCursorPolling(options)
+      return
+    }
     try {
       await this.consumeByStreaming(options)
     } catch (error) {
@@ -377,16 +391,22 @@ export class SseTransport implements CopilotTransport {
   private async consumeByCursorPolling(options: ConsumeRunOptions): Promise<void> {
     const base =
       options.pollUrl ?? fillTemplate(this.endpoints.pollTurn, { turnId: options.turnId })
+    const snapshotResource = options.pollUrl === undefined
     const interval = this.config.pollIntervalMs ?? 1000
     let cursor = options.lastEventId
-    const snapshotCursor = decodeCursor(options.lastEventId)
+    const snapshotCursor =
+      options.restoredState !== undefined
+        ? restoredRunCursor(options.restoredState, options.lastEventId)
+        : decodeCursor(options.lastEventId)
     let snapshotMode = false
     let idleRounds = 0
 
     while (!options.signal.aborted) {
       // A run detail takes no cursor query; only an event page is asked to resume from one.
       const query =
-        cursor === undefined || snapshotMode ? '' : `?after=${encodeURIComponent(cursor)}`
+        cursor === undefined || snapshotMode || snapshotResource
+          ? ''
+          : `?after=${encodeURIComponent(cursor)}`
       const payload = await requestJson<CursorPollResponse & RunSnapshot>(
         this.config,
         `${base}${query}`,

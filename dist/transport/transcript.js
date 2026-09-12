@@ -143,6 +143,7 @@ function planSteps(plan) {
             status: planStatus(entry.status),
             ...(typeof entry.tool === 'string' ? { tool: entry.tool } : {}),
             ...(summary === undefined ? {} : { argsSummary: summary }),
+            ...(isRecord(entry.arguments) ? { arguments: entry.arguments } : {}),
             ...(typeof entry.detail === 'string' ? { detail: entry.detail } : {}),
             ...lineageOf(entry),
         }, entry);
@@ -175,6 +176,7 @@ function logStep(entry, index) {
         status: outputStatus(entry),
         ...(typeof entry.tool === 'string' ? { tool: entry.tool } : {}),
         ...(summary === undefined ? {} : { argsSummary: summary }),
+        ...(isRecord(entry.arguments) ? { arguments: entry.arguments } : {}),
         ...lineageOf(entry),
         ...(entry.output === undefined ? {} : { output: entry.output }),
     }, entry);
@@ -196,6 +198,7 @@ function childSteps(parent, entry) {
             kind: 'tool',
             ...(typeof child.tool === 'string' ? { tool: child.tool } : {}),
             ...(summary === undefined ? {} : { argsSummary: summary }),
+            ...(isRecord(child.arguments) ? { arguments: child.arguments } : {}),
             ...(typeof child.detail === 'string' ? { detail: child.detail } : {}),
             ...lineageOf(child),
             ...(agent === undefined ? {} : { agent }),

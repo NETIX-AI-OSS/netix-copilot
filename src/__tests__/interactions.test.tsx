@@ -461,7 +461,7 @@ describe('AutoTransport.consumeRun', () => {
     expect(await auto.fetchThread('4')).toEqual([])
   })
 
-  it('routes cancel and thread listing somewhere harmless until a choice is made', async () => {
+  it('reports unsupported cancellation until auto transport selects streaming', async () => {
     const polling = new AgenticTransport({
       baseUrl: 'https://x',
       fetchImpl: (async () => jsonResponse({ results: [] })) as never,
@@ -473,7 +473,7 @@ describe('AutoTransport.consumeRun', () => {
       }),
       polling,
     )
-    await expect(auto.cancelTurn('1')).resolves.toBeUndefined()
+    await expect(auto.cancelTurn('1')).rejects.toThrow(/cannot stop the server-side run/)
     await expect(auto.listThreads()).resolves.toEqual([])
   })
 })

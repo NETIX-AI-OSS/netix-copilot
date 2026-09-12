@@ -516,9 +516,9 @@ describe('AgenticTransport.fetchThread', () => {
 })
 
 describe('AgenticTransport unsupported operations', () => {
-  it('has no cancel route to call, so cancelling is a local no-op', async () => {
+  it('rejects cancellation rather than claiming the server-side run stopped', async () => {
     const { transport, fetchImpl } = transportWith([])
-    await expect(transport.cancelTurn('1')).resolves.toBeUndefined()
+    await expect(transport.cancelTurn('1')).rejects.toThrow(/cannot stop the server-side run/)
     expect(fetchImpl).not.toHaveBeenCalled()
   })
 

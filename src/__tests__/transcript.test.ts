@@ -398,6 +398,7 @@ describe('rebuildRun', () => {
       parentId: 'a1',
       depth: 1,
       argsSummary: 'tag_ids=[2]',
+      arguments: { tag_ids: [1, 2] },
       output: { values: [18.2] },
       durationMs: 210,
       startedAt: 1100,

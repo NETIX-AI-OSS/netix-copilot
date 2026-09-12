@@ -2,7 +2,7 @@ import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
-import { useCopilotAdapters, useCopilotEnabled } from '../adapters/context'
+import { useCopilotAdapters, useCopilotEnabled, useCopilotEngine } from '../adapters/context'
 import { injectCopilotStyles } from '../ui/styles'
 import { themeToCssVars } from '../ui/theme'
 import { Launcher } from './launcher'
@@ -65,6 +65,7 @@ export function CopilotDock({
   ...panelProps
 }: CopilotDockProps): ReactNode {
   const { t, theme } = useCopilotAdapters()
+  const engine = useCopilotEngine()
   const enabled = useCopilotEnabled()
   const controlled = openProp !== undefined || modeProp !== undefined
   const [localMode, setLocalMode] = useState<CopilotDockMode>(() => {
@@ -93,6 +94,7 @@ export function CopilotDock({
     if (!controlled) writeStored(OPEN_STORAGE_KEY, localMode === 'min' ? 'false' : 'true')
   }, [controlled, localMode])
   useEffect(() => writeStored(WIDTH_STORAGE_KEY, String(width)), [width])
+  useEffect(() => engine.recordDockMode(enabled ? mode : 'min'), [enabled, engine, mode])
 
   if (!enabled) return null
   const target =

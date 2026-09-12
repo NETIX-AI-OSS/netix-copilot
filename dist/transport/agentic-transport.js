@@ -68,10 +68,10 @@ class AgenticTransport {
             throw new Error('ml-engine create returned no request id.');
         return { turnId, threadId: turnId, modelTier: input.modelTier };
     }
-    // The live contract has no cancel route. Aborting the local reader is all the client can do,
-    // and the run finishes server-side regardless.
+    // The live contract has no cancel route. Reject instead of claiming a server-side run stopped.
     async cancelTurn() {
-        return Promise.resolve();
+        throw new Error('netix-copilot: cancellation needs the streaming copilot contract. The agentic poll ' +
+            'contract cannot stop the server-side run.');
     }
     // The poll resource surfaces no awaiting_approval step and serves no decision route, so there
     // is nothing to record against. Failing loudly is deliberate: resolving quietly would tell the
@@ -125,7 +125,9 @@ class AgenticTransport {
         const path = (0, types_1.fillTemplate)(this.endpoints.detail, { turnId: options.turnId });
         const base = this.config.pollIntervalMs ?? 2000;
         const ceiling = this.config.maxPollIntervalMs ?? 10000;
-        const cursor = (0, run_diff_1.decodeCursor)(options.lastEventId);
+        const cursor = options.restoredState !== undefined
+            ? (0, run_diff_1.restoredRunCursor)(options.restoredState, options.lastEventId)
+            : (0, run_diff_1.decodeCursor)(options.lastEventId);
         let idleRounds = 0;
         while (!options.signal.aborted) {
             const snapshot = await (0, http_1.requestJson)(this.config, path, {

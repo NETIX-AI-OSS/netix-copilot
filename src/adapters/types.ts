@@ -11,7 +11,7 @@
 
 import type { ReactNode } from 'react'
 
-import type { CopilotChart, JsonObject } from '../types'
+import type { CopilotChart, CopilotLifecycleEvent, JsonObject } from '../types'
 
 export interface CopilotUser {
   id: number
@@ -162,6 +162,9 @@ export interface CopilotAdapters {
     warn: (message: string, detail?: unknown) => void
     error: (message: string, detail?: unknown) => void
   }
+  // Product analytics without prompt or answer text. Restored history never emits run lifecycle
+  // events, so a host can count these directly without inflating completion metrics.
+  onLifecycleEvent?: (event: CopilotLifecycleEvent) => void
 }
 
 // Split one typed prompt into the text to display and the text to send. Always trims, and never

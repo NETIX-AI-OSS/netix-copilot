@@ -164,7 +164,13 @@ export function applyEvent(state: RunState, event: CopilotEvent): RunState {
     case 'usage':
       return { ...state, usage: mergeUsage(state.usage, event.usage) }
     case 'done':
-      return { ...state, ...applySummary(state, event), status: 'done', offline: false }
+      return {
+        ...state,
+        ...applySummary(state, event),
+        status: 'done',
+        offline: false,
+        cancellation: undefined,
+      }
     case 'error':
       return {
         ...state,
@@ -172,9 +178,10 @@ export function applyEvent(state: RunState, event: CopilotEvent): RunState {
         status: 'error',
         error: event.error,
         offline: false,
+        cancellation: undefined,
       }
     case 'cancelled':
-      return { ...state, status: 'cancelled', offline: false }
+      return { ...state, status: 'cancelled', offline: false, cancellation: undefined }
     default:
       return state
   }

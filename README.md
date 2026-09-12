@@ -162,8 +162,12 @@ context in the prompt text. `transformPrompt` keeps it off the screen:
 ```tsx
 adapters={{
   // …
-  transformPrompt: (prompt, { isFirstMessage }) =>
-    isFirstMessage && workOrderId ? `${prompt} WORK_ORDER_ID: ${workOrderId}` : prompt,
+  transformPrompt: (prompt, { includeContext, pageContext: { route, entity, state } }) => {
+    const currentPage = { route, entity, state }
+    return includeContext && entity
+      ? `${prompt}\n\nCURRENT_PAGE_CONTEXT: ${JSON.stringify(currentPage)}`
+      : prompt
+  },
 }}
 ```
 
@@ -175,6 +179,10 @@ The composer shows a page-context chip (`@{entity.label ?? state.module}`) that 
 off for a send. The flag reaches the transform as `context.includeContext` — `false` when the chip
 is off, absent otherwise, so a transform written before the chip existed keeps its behaviour — and
 `engine.setContextEnabled(bool)` drives it programmatically.
+
+Apply the context transform on every included turn. A conversation can outlive a route change, so
+gating it with `isFirstMessage` leaves follow-up questions grounded in the page that originally
+opened the thread rather than the page currently visible.
 
 ## Which backend it talks to
 
@@ -318,6 +326,7 @@ Everything that differs between applications is injected. Everything that does n
 | `renderMarkdown`       | optional                    | Override the built-in renderer. Omit it and the SDK uses its own streaming-tolerant one, which keeps `react-markdown` out of the dependency tree.                   |
 | `transformPrompt`      | optional                    | Last chance to change what goes on the wire. The transcript keeps what the user typed, so a host scope hint never appears in the user's own chat bubble.            |
 | `onNavigate`, `logger` | optional                    | Deep links and diagnostics.                                                                                                                                         |
+| `onLifecycleEvent`     | optional                    | Privacy-safe dock/send/live-run analytics. Payloads contain ids, status metadata and timing, never prompt or answer text; restored history emits no outcomes.       |
 | `notify`               | optional                    | Route the SDK's small confirmations (copied, exported, deleted) through the host's toaster. Without it the SDK shows its own bottom-centre `ToastHost` pill.        |
 | `labels`               | optional                    | `{ tools?, agents? }` name overrides keyed by the raw ml-engine name, ahead of the `copilot.tool.*` / `copilot.agent.*` keys and the sentence-cased fallback.       |
 | `quickPrompts`         | optional                    | Starter chips for an empty conversation when the host does not pass them per panel.                                                                                 |
@@ -353,7 +362,8 @@ identically in viz-ui (SWR) and cafm-v2-ui (react-query).
 
 ## Connection behaviour
 
-- **An idle dock holds no connection.** A stream opens in `send()` and nowhere else; mounting the
+- **An idle dock holds no connection.** A stream opens in `send()`; restoring an active thread
+  polls its authoritative turn detail until terminal. Mounting the
   dock only registers a store listener. ml-engine runs one replica with two uvicorn workers and
   the shared ingress caps concurrent connections per IP across all eleven API hosts, so a
   permanently connected dock on every tab would not survive a busy office.
@@ -366,6 +376,9 @@ identically in viz-ui (SWR) and cafm-v2-ui (react-query).
   the snapshot has already been rendered, so a resume never repeats the answer.
 - **Offline pauses.** Losing the network suspends the reader and marks the run `paused` rather
   than failing it; regaining it resumes from the cursor.
+- **Cancellation is confirmed by the server.** Stop marks a request pending and keeps consuming
+  the run until `cancelled`, `done`, or `error` arrives. A rejected cancel remains visible and the
+  still-active run can be stopped again.
 - **No `EventSource`.** Native `EventSource` cannot set an `Authorization` header and the
   gateway's ext_authz filter reads only that header, with no cookie fallback. The SDK uses
   `fetch()` with a hand-written `ReadableStream` SSE parser.

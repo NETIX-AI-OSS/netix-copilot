@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-import { useCopilotAdapters } from '../adapters/context'
+import { useCopilotAdapters, useCopilotState } from '../adapters/context'
 import type { CopilotTurnView } from '../runtime/engine'
 import { isRunActive, isRunFinished } from '../runtime/run-store'
 import { AnswerActions } from './answer-actions'
@@ -38,9 +38,12 @@ export function MessageView({
   showResultData = true,
 }: MessageViewProps): ReactNode {
   const { t, renderChart, renderMarkdown } = useCopilotAdapters()
+  const { threadReadOnly } = useCopilotState()
   const { run } = turn
   const streaming = isRunActive(run)
-  const approvals = run.steps.filter((step) => step.status === 'awaiting_approval')
+  const approvals = threadReadOnly
+    ? []
+    : run.steps.filter((step) => step.status === 'awaiting_approval')
   const table = showResultData && run.resultData && hasResultContent(run.resultData)
 
   return (
@@ -108,6 +111,16 @@ export function MessageView({
 
         {run.status === 'paused' ? (
           <p className='nxcp-banner'>{t('copilot.status.offline')}</p>
+        ) : null}
+
+        {run.cancellation?.status === 'requested' ? (
+          <p className='nxcp-banner'>{t('copilot.status.cancelling')}</p>
+        ) : null}
+
+        {run.cancellation?.status === 'failed' ? (
+          <p className='nxcp-banner' data-tone='error' role='alert'>
+            {run.cancellation.message ?? t('copilot.status.cancelFailed')}
+          </p>
         ) : null}
 
         {run.error ? (

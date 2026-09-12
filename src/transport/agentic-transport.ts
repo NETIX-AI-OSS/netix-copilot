@@ -6,7 +6,7 @@ import type { CopilotThread, JsonObject, SendTurnInput } from '../types'
 import type { HttpConfig } from './http'
 import { isRouteMissing, request, requestJson } from './http'
 import type { RunSnapshot } from './run-diff'
-import { decodeCursor, diffRunSnapshot, isTerminalStatus } from './run-diff'
+import { decodeCursor, diffRunSnapshot, isTerminalStatus, restoredRunCursor } from './run-diff'
 import { transcriptFromRequest } from './transcript'
 import type {
   ConsumeRunOptions,
@@ -111,10 +111,12 @@ export class AgenticTransport implements CopilotTransport {
     return { turnId, threadId: turnId, modelTier: input.modelTier }
   }
 
-  // The live contract has no cancel route. Aborting the local reader is all the client can do,
-  // and the run finishes server-side regardless.
+  // The live contract has no cancel route. Reject instead of claiming a server-side run stopped.
   async cancelTurn(): Promise<void> {
-    return Promise.resolve()
+    throw new Error(
+      'netix-copilot: cancellation needs the streaming copilot contract. The agentic poll ' +
+        'contract cannot stop the server-side run.',
+    )
   }
 
   // The poll resource surfaces no awaiting_approval step and serves no decision route, so there
@@ -172,7 +174,10 @@ export class AgenticTransport implements CopilotTransport {
     const path = fillTemplate(this.endpoints.detail, { turnId: options.turnId })
     const base = this.config.pollIntervalMs ?? 2000
     const ceiling = this.config.maxPollIntervalMs ?? 10000
-    const cursor = decodeCursor(options.lastEventId)
+    const cursor =
+      options.restoredState !== undefined
+        ? restoredRunCursor(options.restoredState, options.lastEventId)
+        : decodeCursor(options.lastEventId)
     let idleRounds = 0
 
     while (!options.signal.aborted) {

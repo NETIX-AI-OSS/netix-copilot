@@ -70,6 +70,9 @@ export interface PlanStep {
   kind?: StepKind
   // Short human-readable summary of the arguments, never the raw argument payload.
   argsSummary?: string
+  // Complete proposed inputs for an approval-gated action. The backend keeps this separate from
+  // argsSummary so the review card never has to authorize a write from truncated text.
+  arguments?: JsonObject
   durationMs?: number
   detail?: string
   // Lineage. `agent` names the specialist that made this call (ml-engine class name such as
@@ -284,6 +287,9 @@ export interface CopilotThread {
   isPinned?: boolean
   surface?: string
   createdAt?: number
+  // True for a same-organization briefing recipient who may inspect this conversation but may
+  // not reply, cancel, approve, rename, pin or delete it.
+  readOnly?: boolean
 }
 
 export interface RunState {
@@ -308,6 +314,9 @@ export interface RunState {
   executionMs?: number
   resultData?: CopilotResultData
   error?: CopilotErrorPayload
+  // A cancellation request is not the same as a cancelled run. `requested` remains live until
+  // the server emits a terminal event; `failed` leaves the run live and exposes the reason.
+  cancellation?: { status: 'requested' | 'failed'; message?: string }
   lastEventId?: string
   // When the run started on the server (epoch ms), for a live elapsed counter.
   startedAt?: number
@@ -317,6 +326,42 @@ export interface RunState {
   // True while the reader is intentionally suspended because the browser went offline.
   offline: boolean
 }
+
+export type CopilotLifecycleEvent =
+  | { type: 'dock_opened'; mode: 'dock' | 'full' }
+  | {
+      type: 'message_sent'
+      threadId?: string
+      modelTier: ModelTier
+      surface: 'web' | 'mobile' | 'embed' | 'api'
+      contextIncluded: boolean
+    }
+  | {
+      type: 'run_completed'
+      threadId: string
+      turnId: string
+      modelTier?: ModelTier
+      durationMs?: number
+      transport?: 'sse' | 'agentic'
+    }
+  | {
+      type: 'run_failed'
+      threadId?: string
+      turnId?: string
+      modelTier?: ModelTier
+      durationMs?: number
+      transport?: 'sse' | 'agentic'
+      code?: string
+      cause?: CopilotErrorCause
+    }
+  | {
+      type: 'run_slow'
+      threadId: string
+      turnId: string
+      modelTier?: ModelTier
+      elapsedMs: number
+      transport?: 'sse' | 'agentic'
+    }
 
 export interface SendTurnInput {
   prompt: string

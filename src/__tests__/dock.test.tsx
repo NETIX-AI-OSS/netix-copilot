@@ -101,6 +101,13 @@ describe('CopilotDock', () => {
     fetchSpy.mockRestore()
   })
 
+  it('reports one dock-open event under StrictMode', () => {
+    const onLifecycleEvent = vi.fn()
+    mount(new ScriptedTransport(), { onLifecycleEvent }, true)
+    expect(onLifecycleEvent).toHaveBeenCalledTimes(1)
+    expect(onLifecycleEvent).toHaveBeenCalledWith({ type: 'dock_opened', mode: 'dock' })
+  })
+
   it('starts exactly one run under StrictMode, not two', async () => {
     const transport = new ScriptedTransport()
     mount(transport, {}, true)

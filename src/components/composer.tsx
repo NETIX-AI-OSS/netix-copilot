@@ -45,6 +45,10 @@ export function Composer({ autoFocus }: ComposerProps): ReactNode {
     box.style.height = `${Math.min(box.scrollHeight, MAX_TEXTAREA_HEIGHT)}px`
   }, [value])
 
+  if (state.threadReadOnly) {
+    return <p className='nxcp-banner'>{t('copilot.thread.readOnly')}</p>
+  }
+
   const submit = () => {
     if (!canSend) return
     send(value)
@@ -102,9 +106,12 @@ export function Composer({ autoFocus }: ComposerProps): ReactNode {
                 type='button'
                 className='nxcp-send'
                 data-busy='true'
+                disabled={run?.cancellation?.status === 'requested'}
                 onClick={() => engine.cancel()}
               >
-                {t('copilot.composer.stop')}
+                {run?.cancellation?.status === 'requested'
+                  ? t('copilot.composer.stopping')
+                  : t('copilot.composer.stop')}
               </button>
             ) : (
               <button type='button' className='nxcp-send' disabled={!canSend} onClick={submit}>
