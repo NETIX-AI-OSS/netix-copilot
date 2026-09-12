@@ -49,7 +49,16 @@ export function ApprovalCard({ step }: ApprovalCardProps): ReactNode {
         </span>
         <div className='nxcp-approval-body'>
           <strong className='nxcp-approval-title'>{step.title}</strong>
-          {step.argsSummary ? <code className='nxcp-approval-args'>{step.argsSummary}</code> : null}
+          {step.arguments ? (
+            <div className='nxcp-approval-arguments'>
+              <span>{t('copilot.approval.arguments')}</span>
+              <pre>
+                <code>{JSON.stringify(step.arguments, null, 2)}</code>
+              </pre>
+            </div>
+          ) : step.argsSummary ? (
+            <code className='nxcp-approval-args'>{step.argsSummary}</code>
+          ) : null}
           {step.detail ? <p className='nxcp-approval-detail'>{step.detail}</p> : null}
         </div>
       </div>

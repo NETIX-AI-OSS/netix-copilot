@@ -144,7 +144,10 @@ describe('decodeFrame', () => {
       frame('step_result', { tool: 't', arguments: { asset_id: 17, tags: [1, 2], nested: {} } }),
     )
     expect(out?.event).toMatchObject({
-      step: { argsSummary: 'asset_id=17, tags=[2], nested={…}' },
+      step: {
+        argsSummary: 'asset_id=17, tags=[2], nested={…}',
+        arguments: { asset_id: 17, tags: [1, 2], nested: {} },
+      },
     })
   })
 

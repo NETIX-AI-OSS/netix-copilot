@@ -63,7 +63,7 @@ export function AnswerActions({ turn, showCaption = true }: AnswerActionsProps):
   const { run } = turn
   const newest = state.turns[state.turns.length - 1]
   const busy = state.sending || (newest !== undefined && isRunActive(newest.run))
-  const canRegenerate = newest?.id === turn.id
+  const canRegenerate = !state.threadReadOnly && newest?.id === turn.id
   const caption = showCaption && run.status === 'done' && run.executionMs !== undefined
 
   const copy = () => {

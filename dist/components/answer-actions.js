@@ -57,7 +57,7 @@ function AnswerActions({ turn, showCaption = true }) {
     const { run } = turn;
     const newest = state.turns[state.turns.length - 1];
     const busy = state.sending || (newest !== undefined && (0, run_store_1.isRunActive)(newest.run));
-    const canRegenerate = newest?.id === turn.id;
+    const canRegenerate = !state.threadReadOnly && newest?.id === turn.id;
     const caption = showCaption && run.status === 'done' && run.executionMs !== undefined;
     const copy = () => {
         void copyText(run.text).then((copied) => {

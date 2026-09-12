@@ -2,7 +2,8 @@
 //
 // Three hard rules are enforced here rather than in the components.
 //
-// 1. An idle dock holds no open connection. A stream is opened by send() and by nothing else.
+// 1. An idle dock holds no open connection. A stream is opened by send(); restoring a live turn
+//    polls its authoritative row until it reaches a terminal state.
 //    Mounting the dock only adds a listener. ml-engine runs one replica with two uvicorn workers
 //    and the shared ingress caps concurrent connections per IP across all eleven API hosts, so a
 //    permanently connected dock on every tab would not survive a busy office.
@@ -16,6 +17,7 @@ import type { CopilotTransport, ThreadPatch, TransportName } from '../transport/
 import { newIdempotencyKey, StreamInterruptedError } from '../transport/types'
 import type {
   CopilotEvent,
+  CopilotLifecycleEvent,
   CopilotThread,
   EnvelopedEvent,
   JsonObject,
@@ -39,6 +41,7 @@ export interface CopilotTurnView {
 // What actually goes on the wire, when a host needs it to differ from what the user sees.
 export interface CopilotSendOptions {
   wireText?: string
+  contextIncluded?: boolean
 }
 
 export interface CopilotEngineState {
@@ -52,6 +55,7 @@ export interface CopilotEngineState {
   threadsLoaded: boolean
   // True while a selected thread's transcript is being fetched.
   threadLoading: boolean
+  threadReadOnly: boolean
   modelTier: ModelTier
   modelTierLocked: boolean
   // Whether the next send folds the host page context into the prompt. The composer's context
@@ -82,6 +86,8 @@ export interface CopilotEngineOptions {
   setTimeoutImpl?: (handler: () => void, ms: number) => ReturnType<typeof setTimeout>
   clearTimeoutImpl?: (handle: ReturnType<typeof setTimeout>) => void
   conversationSurface?: 'web' | 'mobile' | 'embed' | 'api'
+  slowRunThresholdMs?: number
+  onLifecycleEvent?: (event: CopilotLifecycleEvent) => void
 }
 
 export function browserOnlineSource(): OnlineSource {
@@ -104,6 +110,7 @@ export function browserOnlineSource(): OnlineSource {
 const DEFAULT_TEARDOWN_GRACE_MS = 250
 const DEFAULT_MAX_RESUME_ATTEMPTS = 3
 const DEFAULT_RESUME_DELAY_MS = 750
+const DEFAULT_SLOW_RUN_THRESHOLD_MS = 10_000
 
 export class CopilotEngine {
   private readonly options: CopilotEngineOptions
@@ -123,6 +130,11 @@ export class CopilotEngine {
   // Where the server said to read the active run. Kept so a resume tails the URL it handed back.
   private activeStreamUrl: string | undefined
   private activePollUrl: string | undefined
+  private activeRestoredState: RunState | undefined
+  private activeSlowHandle: ReturnType<typeof setTimeout> | undefined
+  private readonly liveTurnIds = new Set<string>()
+  private readonly cancelAfterCreate = new Set<number>()
+  private dockMode: 'min' | 'dock' | 'full' = 'min'
 
   constructor(options: CopilotEngineOptions) {
     this.options = options
@@ -137,6 +149,7 @@ export class CopilotEngine {
       threads: [],
       threadsLoaded: false,
       threadLoading: false,
+      threadReadOnly: false,
       modelTier: 'base',
       modelTierLocked: false,
       contextEnabled: true,
@@ -168,7 +181,10 @@ export class CopilotEngine {
     const grace = this.options.teardownGraceMs ?? DEFAULT_TEARDOWN_GRACE_MS
     this.teardownHandle = this.schedule(() => {
       this.teardownHandle = undefined
-      if (this.refCount === 0) this.abortActiveRun()
+      if (this.refCount === 0) {
+        this.stopTrackingActiveRun()
+        this.abortActiveRun()
+      }
     }, grace)
   }
 
@@ -187,7 +203,8 @@ export class CopilotEngine {
   // the agentic contract has no field for.
   async send(prompt: string, scope?: JsonObject, options?: CopilotSendOptions): Promise<void> {
     const trimmed = prompt.trim()
-    if (trimmed === '' || this.snapshot.sending || this.isStreaming) return
+    if (trimmed === '' || this.snapshot.threadReadOnly || this.snapshot.sending || this.isStreaming)
+      return
 
     const wireText = options?.wireText?.trim()
     const wire = wireText === undefined || wireText === '' ? trimmed : wireText
@@ -200,6 +217,13 @@ export class CopilotEngine {
       ...(wire === trimmed ? {} : { wirePrompt: wire }),
     }
     this.update({ turns: [...this.snapshot.turns, turn], sending: true })
+    this.emitLifecycle({
+      type: 'message_sent',
+      ...(this.snapshot.threadId === undefined ? {} : { threadId: this.snapshot.threadId }),
+      modelTier: this.snapshot.modelTier,
+      surface: this.options.conversationSurface ?? 'web',
+      contextIncluded: options?.contextIncluded ?? scope !== undefined,
+    })
 
     // Minted once per user send, so any retry of this send replays server-side instead of spending again.
     const input: SendTurnInput = {
@@ -217,15 +241,27 @@ export class CopilotEngine {
     try {
       created = await this.options.transport.createTurn(input)
     } catch (error) {
+      this.cancelAfterCreate.delete(token)
       if (token !== this.threadSeq) return
       this.update({ sending: false, modelTierLocked: this.snapshot.threadId !== undefined })
       this.pushEvent({
         type: 'error',
         error: { message: describeError(error), retryable: true },
       })
+      this.emitLifecycle({
+        type: 'run_failed',
+        ...(this.snapshot.threadId === undefined ? {} : { threadId: this.snapshot.threadId }),
+        modelTier: this.snapshot.modelTier,
+      })
       return
     }
+    const cancellationRequested = this.cancelAfterCreate.delete(token)
     if (token !== this.threadSeq) {
+      if (cancellationRequested) {
+        void this.options.transport.cancelTurn(created.turnId).catch((error: unknown) => {
+          this.options.logger?.warn('netix-copilot: late-created turn cancellation failed', error)
+        })
+      }
       this.options.logger?.warn('netix-copilot: turn created after the thread changed; dropped', {
         turnId: created.turnId,
       })
@@ -239,31 +275,41 @@ export class CopilotEngine {
       modelTierLocked: true,
     })
     this.patchActiveRun({ turnId: created.turnId })
+    this.liveTurnIds.add(created.turnId)
     this.activeStreamUrl = created.streamUrl
     this.activePollUrl = created.pollUrl
-    void this.consume(created.turnId, undefined, created.streamUrl, created.pollUrl)
-  }
-
-  cancel(): void {
-    const run = this.activeRun
-    if (!run || !isRunActive(run)) return
-    const turnId = run.turnId
-    this.abortActiveRun()
-    this.pushEvent({ type: 'cancelled' })
-    if (turnId !== undefined) {
-      void this.options.transport.cancelTurn(turnId).catch((error: unknown) => {
-        this.options.logger?.warn('netix-copilot: cancel request failed', error)
-      })
+    this.activeRestoredState = undefined
+    this.startSlowTimer(created.turnId, token)
+    void this.consume(created.turnId, undefined, created.streamUrl, created.pollUrl, token)
+    if (cancellationRequested || this.activeRun?.cancellation?.status === 'requested') {
+      void this.requestCancellation(created.turnId, token)
     }
   }
 
+  cancel(): void {
+    if (this.snapshot.threadReadOnly) return
+    const run = this.activeRun
+    if (!run || !isRunActive(run) || run.cancellation?.status === 'requested') return
+    this.patchActiveRun({ cancellation: { status: 'requested' } })
+    if (run.turnId !== undefined) void this.requestCancellation(run.turnId, this.threadSeq)
+    else this.cancelAfterCreate.add(this.threadSeq)
+  }
+
+  recordDockMode(mode: 'min' | 'dock' | 'full'): void {
+    const previous = this.dockMode
+    this.dockMode = mode
+    if (previous === 'min' && mode !== 'min') this.emitLifecycle({ type: 'dock_opened', mode })
+  }
+
   async approve(stepId: string, approved: boolean): Promise<void> {
+    if (this.snapshot.threadReadOnly) return
     const turnId = this.activeRun?.turnId
     if (turnId === undefined) return
     await this.options.transport.respondToApproval(turnId, stepId, approved)
   }
 
   startNewThread(): void {
+    this.stopTrackingActiveRun()
     this.abortActiveRun()
     this.forgetRunUrls()
     // Bumped so a transcript fetch still in flight cannot land on the empty new thread.
@@ -272,6 +318,7 @@ export class CopilotEngine {
       turns: [],
       sending: false,
       threadLoading: false,
+      threadReadOnly: false,
       modelTier: 'base',
       modelTierLocked: false,
     })
@@ -292,6 +339,7 @@ export class CopilotEngine {
   async loadThread(threadId: string): Promise<void> {
     // Re-selecting the open thread is a mis-click, not a reload: it must not drop a live run.
     if (threadId === this.snapshot.threadId && this.snapshot.turns.length > 0) return
+    this.stopTrackingActiveRun()
     this.abortActiveRun()
     this.forgetRunUrls()
     this.threadSeq += 1
@@ -302,14 +350,44 @@ export class CopilotEngine {
       turns: [],
       sending: false,
       threadLoading: fetchThread !== undefined,
+      threadReadOnly: false,
     })
     if (fetchThread === undefined) return
     try {
-      const turns = await fetchThread.call(this.options.transport, threadId)
+      const accessRequest = this.options.transport.fetchThreadAccess?.call(
+        this.options.transport,
+        threadId,
+      )
+      const [turns, access] = await Promise.all([
+        fetchThread.call(this.options.transport, threadId),
+        accessRequest ?? Promise.resolve({ readOnly: false }),
+      ])
       // A later selection, or a send that already started a new turn, owns the panel now.
       if (token !== this.threadSeq || this.snapshot.turns.length > 0) return
       const restoredTier = turns.find((turn) => turn.run.modelTier)?.run.modelTier ?? 'base'
-      this.update({ turns, threadLoading: false, modelTier: restoredTier, modelTierLocked: true })
+      this.update({
+        turns,
+        threadLoading: false,
+        threadReadOnly: access.readOnly,
+        modelTier: restoredTier,
+        modelTierLocked: true,
+      })
+      const restored = turns[turns.length - 1]?.run
+      if (restored !== undefined && isRunActive(restored) && restored.turnId !== undefined) {
+        this.activeRestoredState = restored
+        if (this.snapshot.online) {
+          void this.consume(
+            restored.turnId,
+            restored.lastEventId,
+            undefined,
+            undefined,
+            token,
+            restored,
+          )
+        } else {
+          this.patchActiveRun({ status: 'paused', offline: true })
+        }
+      }
     } catch (error) {
       if (token !== this.threadSeq) return
       this.options.logger?.warn('netix-copilot: thread transcript unavailable', error)
@@ -340,6 +418,7 @@ export class CopilotEngine {
   // Rename or pin a stored thread. The list updates first so the rail answers immediately, and
   // is put back if the backend refuses.
   async updateThread(threadId: string, patch: ThreadPatch): Promise<void> {
+    if (this.threadIsReadOnly(threadId)) return
     const update = this.options.transport.updateThread
     if (update === undefined) return
     const previous = this.snapshot.threads
@@ -368,6 +447,7 @@ export class CopilotEngine {
 
   // Delete a stored thread. Deleting the open one empties the panel, exactly like New.
   async deleteThread(threadId: string): Promise<void> {
+    if (this.threadIsReadOnly(threadId)) return
     const remove = this.options.transport.deleteThread
     if (remove === undefined) return
     await remove.call(this.options.transport, threadId)
@@ -382,6 +462,7 @@ export class CopilotEngine {
       this.unschedule(this.teardownHandle)
       this.teardownHandle = undefined
     }
+    this.stopTrackingActiveRun()
     this.abortActiveRun()
     this.unsubscribeOnline?.()
     this.unsubscribeOnline = undefined
@@ -394,6 +475,8 @@ export class CopilotEngine {
     lastEventId: string | undefined,
     streamUrl?: string,
     pollUrl?: string,
+    threadToken = this.threadSeq,
+    restoredState?: RunState,
   ): Promise<void> {
     const controller = new AbortController()
     this.controller = controller
@@ -406,12 +489,23 @@ export class CopilotEngine {
         await this.options.transport.consumeRun({
           turnId,
           signal: controller.signal,
-          onEvent: (enveloped) => this.pushEnveloped(enveloped),
+          onEvent: (enveloped) => {
+            if (
+              threadToken === this.threadSeq &&
+              this.controller === controller &&
+              !controller.signal.aborted
+            ) {
+              this.pushEnveloped(enveloped)
+            }
+          },
           ...(cursor === undefined ? {} : { lastEventId: cursor }),
           ...(streamUrl === undefined ? {} : { streamUrl }),
           ...(pollUrl === undefined ? {} : { pollUrl }),
+          ...(restoredState === undefined ? {} : { restoredState }),
           onTransportChange: (name) => {
-            if (this.snapshot.transport !== name) this.update({ transport: name })
+            if (threadToken === this.threadSeq && this.snapshot.transport !== name) {
+              this.update({ transport: name })
+            }
           },
         })
         break
@@ -451,7 +545,14 @@ export class CopilotEngine {
     }
     if (run.status === 'paused' && run.turnId !== undefined) {
       this.patchActiveRun({ status: 'streaming', offline: false })
-      void this.consume(run.turnId, run.lastEventId, this.activeStreamUrl, this.activePollUrl)
+      void this.consume(
+        run.turnId,
+        run.lastEventId,
+        this.activeStreamUrl,
+        this.activePollUrl,
+        this.threadSeq,
+        this.activeRestoredState,
+      )
     }
   }
 
@@ -463,6 +564,7 @@ export class CopilotEngine {
   private forgetRunUrls(): void {
     this.activeStreamUrl = undefined
     this.activePollUrl = undefined
+    this.activeRestoredState = undefined
   }
 
   private delay(ms: number): Promise<void> {
@@ -488,6 +590,7 @@ export class CopilotEngine {
     const nextTurns = turns.slice()
     nextTurns[index] = { ...current, run: nextRun }
     this.update({ turns: nextTurns })
+    this.reportTerminalLifecycle(current.run, nextRun)
   }
 
   private pushEvent(event: CopilotEvent): void {
@@ -512,6 +615,125 @@ export class CopilotEngine {
 
   private notify(): void {
     for (const listener of this.listeners) listener()
+  }
+
+  private threadIsReadOnly(threadId: string): boolean {
+    if (this.snapshot.threadId === threadId && this.snapshot.threadReadOnly) return true
+    return this.snapshot.threads.some(
+      (thread) => thread.id === threadId && thread.readOnly === true,
+    )
+  }
+
+  private async requestCancellation(turnId: string, threadToken: number): Promise<void> {
+    try {
+      await this.options.transport.cancelTurn(turnId)
+    } catch (error) {
+      this.options.logger?.warn('netix-copilot: cancel request failed', error)
+      const run = this.activeRun
+      if (
+        threadToken === this.threadSeq &&
+        run?.turnId === turnId &&
+        isRunActive(run) &&
+        run.cancellation?.status === 'requested'
+      ) {
+        this.patchActiveRun({
+          cancellation: {
+            status: 'failed',
+            message: `Cancellation request failed: ${describeError(error)} The run is still active.`,
+          },
+        })
+      }
+    }
+  }
+
+  private startSlowTimer(turnId: string, threadToken: number): void {
+    this.clearSlowTimer()
+    const threshold = this.options.slowRunThresholdMs ?? DEFAULT_SLOW_RUN_THRESHOLD_MS
+    if (threshold <= 0) return
+    this.activeSlowHandle = this.schedule(() => {
+      this.activeSlowHandle = undefined
+      const run = this.activeRun
+      const threadId = this.snapshot.threadId
+      if (
+        threadToken !== this.threadSeq ||
+        threadId === undefined ||
+        run?.turnId !== turnId ||
+        !isRunActive(run) ||
+        run.cancellation?.status === 'requested' ||
+        !this.liveTurnIds.has(turnId)
+      ) {
+        return
+      }
+      this.emitLifecycle({
+        type: 'run_slow',
+        threadId,
+        turnId,
+        ...(run.modelTier === undefined ? {} : { modelTier: run.modelTier }),
+        elapsedMs: threshold,
+        ...(this.snapshot.transport === undefined ? {} : { transport: this.snapshot.transport }),
+      })
+    }, threshold)
+  }
+
+  private clearSlowTimer(): void {
+    if (this.activeSlowHandle === undefined) return
+    this.unschedule(this.activeSlowHandle)
+    this.activeSlowHandle = undefined
+  }
+
+  private stopTrackingActiveRun(): void {
+    const turnId = this.activeRun?.turnId
+    if (turnId !== undefined) this.liveTurnIds.delete(turnId)
+    this.clearSlowTimer()
+  }
+
+  private reportTerminalLifecycle(previous: RunState, next: RunState): void {
+    const turnId = next.turnId
+    if (
+      turnId === undefined ||
+      !this.liveTurnIds.has(turnId) ||
+      previous.status === next.status ||
+      (next.status !== 'done' && next.status !== 'error' && next.status !== 'cancelled')
+    ) {
+      return
+    }
+    this.liveTurnIds.delete(turnId)
+    this.clearSlowTimer()
+    this.activeRestoredState = undefined
+    const threadId = this.snapshot.threadId
+    if (threadId === undefined || next.status === 'cancelled') return
+    const durationMs =
+      next.executionMs ??
+      (next.startedAt === undefined ? undefined : Math.max(0, this.now() - next.startedAt))
+    if (next.status === 'done') {
+      this.emitLifecycle({
+        type: 'run_completed',
+        threadId,
+        turnId,
+        ...(next.modelTier === undefined ? {} : { modelTier: next.modelTier }),
+        ...(durationMs === undefined ? {} : { durationMs }),
+        ...(this.snapshot.transport === undefined ? {} : { transport: this.snapshot.transport }),
+      })
+      return
+    }
+    this.emitLifecycle({
+      type: 'run_failed',
+      threadId,
+      turnId,
+      ...(next.modelTier === undefined ? {} : { modelTier: next.modelTier }),
+      ...(durationMs === undefined ? {} : { durationMs }),
+      ...(this.snapshot.transport === undefined ? {} : { transport: this.snapshot.transport }),
+      ...(next.error?.code === undefined ? {} : { code: next.error.code }),
+      ...(next.error?.cause === undefined ? {} : { cause: next.error.cause }),
+    })
+  }
+
+  private emitLifecycle(event: CopilotLifecycleEvent): void {
+    try {
+      this.options.onLifecycleEvent?.(event)
+    } catch (error) {
+      this.options.logger?.warn('netix-copilot: lifecycle callback failed', error)
+    }
   }
 }
 

@@ -1,4 +1,4 @@
-import type { EnvelopedEvent } from '../types';
+import type { EnvelopedEvent, RunState } from '../types';
 import type { CopilotRunRow } from './transcript';
 export interface RunSnapshot extends CopilotRunRow {
     turn_id?: number | string | null;
@@ -15,5 +15,7 @@ export interface RunCursor {
 }
 export declare function encodeCursor(cursor: RunCursor): string;
 export declare function decodeCursor(raw: string | undefined): RunCursor;
+export declare function cursorFromRunState(state: RunState): RunCursor;
+export declare function restoredRunCursor(state: RunState, lastEventId: string | undefined): RunCursor;
 export declare function isTerminalStatus(status: number | undefined): boolean;
 export declare function diffRunSnapshot(snapshot: RunSnapshot, cursor: RunCursor, turnId: string): EnvelopedEvent[];

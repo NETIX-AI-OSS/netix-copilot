@@ -218,26 +218,28 @@ export function HistoryRail({
                 </span>
               </span>
             </button>
-            <button
-              type='button'
-              className='nxcp-icon-button nxcp-thread-kebab'
-              aria-label={t('copilot.history.menu')}
-              aria-expanded={menuOpen}
-              onClick={() => setMenuId(menuOpen ? undefined : thread.id)}
-            >
-              <svg
-                width={13}
-                height={13}
-                viewBox='0 0 24 24'
-                fill='currentColor'
-                aria-hidden='true'
+            {thread.readOnly ? null : (
+              <button
+                type='button'
+                className='nxcp-icon-button nxcp-thread-kebab'
+                aria-label={t('copilot.history.menu')}
+                aria-expanded={menuOpen}
+                onClick={() => setMenuId(menuOpen ? undefined : thread.id)}
               >
-                <circle cx='5' cy='12' r='1.7' />
-                <circle cx='12' cy='12' r='1.7' />
-                <circle cx='19' cy='12' r='1.7' />
-              </svg>
-            </button>
-            {menuOpen ? (
+                <svg
+                  width={13}
+                  height={13}
+                  viewBox='0 0 24 24'
+                  fill='currentColor'
+                  aria-hidden='true'
+                >
+                  <circle cx='5' cy='12' r='1.7' />
+                  <circle cx='12' cy='12' r='1.7' />
+                  <circle cx='19' cy='12' r='1.7' />
+                </svg>
+              </button>
+            )}
+            {menuOpen && !thread.readOnly ? (
               <div role='group' aria-label={t('copilot.history.menu')} className='nxcp-thread-menu'>
                 <button type='button' onClick={() => togglePin(thread)}>
                   {t(thread.isPinned ? 'copilot.history.unpin' : 'copilot.history.pin')}

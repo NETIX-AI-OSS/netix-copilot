@@ -39,6 +39,7 @@ function clampWidth(width, fallback = DEFAULT_WIDTH) {
 }
 function CopilotDock({ open: openProp, onOpenChange, defaultOpen, showLauncher = true, container, mode: modeProp, onModeChange, headerActions, showThreads = true, ...panelProps }) {
     const { t, theme } = (0, context_1.useCopilotAdapters)();
+    const engine = (0, context_1.useCopilotEngine)();
     const enabled = (0, context_1.useCopilotEnabled)();
     const controlled = openProp !== undefined || modeProp !== undefined;
     const [localMode, setLocalMode] = (0, react_1.useState)(() => {
@@ -65,6 +66,7 @@ function CopilotDock({ open: openProp, onOpenChange, defaultOpen, showLauncher =
             writeStored(OPEN_STORAGE_KEY, localMode === 'min' ? 'false' : 'true');
     }, [controlled, localMode]);
     (0, react_1.useEffect)(() => writeStored(WIDTH_STORAGE_KEY, String(width)), [width]);
+    (0, react_1.useEffect)(() => engine.recordDockMode(enabled ? mode : 'min'), [enabled, engine, mode]);
     if (!enabled)
         return null;
     const target = container === undefined ? (typeof document === 'undefined' ? null : document.body) : container;

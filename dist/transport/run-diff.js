@@ -4,6 +4,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.encodeCursor = encodeCursor;
 exports.decodeCursor = decodeCursor;
+exports.cursorFromRunState = cursorFromRunState;
+exports.restoredRunCursor = restoredRunCursor;
 exports.isTerminalStatus = isTerminalStatus;
 exports.diffRunSnapshot = diffRunSnapshot;
 const transcript_1 = require("./transcript");
@@ -48,6 +50,25 @@ function decodeCursor(raw) {
         queuedEmitted: flags.includes('q'),
         usageSignature: decodeURIComponent(parts[4] ?? ''),
     };
+}
+// Seed snapshot polling from the transcript already on screen. Tool rows are deliberately
+// replayed and upserted by call id because a restored trace may not correspond one-to-one with
+// execution_log rows; text, plan and chart data can be skipped exactly.
+function cursorFromRunState(state) {
+    return {
+        textLength: state.text.length,
+        logCount: 0,
+        planEmitted: state.hasPlan,
+        chartEmitted: state.charts.length > 0,
+        usageSignature: '',
+        runStarted: state.turnId !== undefined,
+        queuedEmitted: state.status !== 'queued',
+    };
+}
+function restoredRunCursor(state, lastEventId) {
+    return lastEventId?.startsWith(`${CURSOR_PREFIX}:`) === true
+        ? decodeCursor(lastEventId)
+        : cursorFromRunState(state);
 }
 function isTerminalStatus(status) {
     return (status === transcript_1.AGENTIC_STATUS.COMPLETED ||

@@ -1,5 +1,5 @@
 import type { CopilotTransport, ThreadPatch, TransportName } from '../transport/types';
-import type { CopilotThread, JsonObject, ModelTier, RunState } from '../types';
+import type { CopilotLifecycleEvent, CopilotThread, JsonObject, ModelTier, RunState } from '../types';
 export interface CopilotTurnView {
     id: string;
     prompt: string;
@@ -9,6 +9,7 @@ export interface CopilotTurnView {
 }
 export interface CopilotSendOptions {
     wireText?: string;
+    contextIncluded?: boolean;
 }
 export interface CopilotEngineState {
     threadId?: string;
@@ -19,6 +20,7 @@ export interface CopilotEngineState {
     threads: CopilotThread[];
     threadsLoaded: boolean;
     threadLoading: boolean;
+    threadReadOnly: boolean;
     modelTier: ModelTier;
     modelTierLocked: boolean;
     contextEnabled: boolean;
@@ -42,6 +44,8 @@ export interface CopilotEngineOptions {
     setTimeoutImpl?: (handler: () => void, ms: number) => ReturnType<typeof setTimeout>;
     clearTimeoutImpl?: (handle: ReturnType<typeof setTimeout>) => void;
     conversationSurface?: 'web' | 'mobile' | 'embed' | 'api';
+    slowRunThresholdMs?: number;
+    onLifecycleEvent?: (event: CopilotLifecycleEvent) => void;
 }
 export declare function browserOnlineSource(): OnlineSource;
 export declare class CopilotEngine {
@@ -60,6 +64,11 @@ export declare class CopilotEngine {
     private threadSeq;
     private activeStreamUrl;
     private activePollUrl;
+    private activeRestoredState;
+    private activeSlowHandle;
+    private readonly liveTurnIds;
+    private readonly cancelAfterCreate;
+    private dockMode;
     constructor(options: CopilotEngineOptions);
     subscribe: (listener: () => void) => (() => void);
     getSnapshot: () => CopilotEngineState;
@@ -69,6 +78,7 @@ export declare class CopilotEngine {
     get isStreaming(): boolean;
     send(prompt: string, scope?: JsonObject, options?: CopilotSendOptions): Promise<void>;
     cancel(): void;
+    recordDockMode(mode: 'min' | 'dock' | 'full'): void;
     approve(stepId: string, approved: boolean): Promise<void>;
     startNewThread(): void;
     selectThread(threadId: string): void;
@@ -89,4 +99,11 @@ export declare class CopilotEngine {
     private patchActiveRun;
     private update;
     private notify;
+    private threadIsReadOnly;
+    private requestCancellation;
+    private startSlowTimer;
+    private clearSlowTimer;
+    private stopTrackingActiveRun;
+    private reportTerminalLifecycle;
+    private emitLifecycle;
 }

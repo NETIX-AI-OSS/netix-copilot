@@ -69,6 +69,9 @@ function threadFromRow(row) {
     const createdAt = readTimestamp(row, ['created_on', 'created_at', 'createdAt']);
     if (createdAt !== undefined)
         thread.createdAt = createdAt;
+    const readOnly = row.read_only ?? row.readOnly;
+    if (typeof readOnly === 'boolean')
+        thread.readOnly = readOnly;
     return thread;
 }
 class SseTransport {
@@ -119,7 +122,7 @@ class SseTransport {
     async cancelTurn(turnId) {
         await (0, http_1.request)(this.config, (0, types_1.fillTemplate)(this.endpoints.cancelTurn, { turnId }), {
             method: 'POST',
-        }).catch(() => undefined);
+        });
     }
     // ml-engine accepts either key and prefers `approved` when both arrive; sending both keeps the
     // request readable in a log and tolerant of whichever half a proxy strips.
@@ -143,6 +146,10 @@ class SseTransport {
                 ? payload.results
                 : [];
         return rows.filter(isRecord).map((row, index) => (0, transcript_1.turnFromRow)(row, threadId, index));
+    }
+    async fetchThreadAccess(threadId, signal) {
+        const payload = await this.readOrEmpty(this.threadPath(threadId), signal);
+        return { readOnly: isRecord(payload) && payload.read_only === true };
     }
     async listThreads(signal) {
         const separator = this.endpoints.threads.includes('?') ? '&' : '?';
@@ -210,6 +217,13 @@ class SseTransport {
     }
     async consumeRun(options) {
         options.onTransportChange?.('sse');
+        // Transcript rows do not persist the Redis event id needed for an exact SSE resume. Poll the
+        // turn detail from a cursor seeded by the restored state, which is both authoritative and
+        // duplicate-safe, then keep polling until its terminal database status is visible.
+        if (options.restoredState !== undefined) {
+            await this.consumeByCursorPolling(options);
+            return;
+        }
         try {
             await this.consumeByStreaming(options);
         }
@@ -308,14 +322,19 @@ class SseTransport {
     // accepted, so a host that points `pollTurn` at one of its own keeps working.
     async consumeByCursorPolling(options) {
         const base = options.pollUrl ?? (0, types_1.fillTemplate)(this.endpoints.pollTurn, { turnId: options.turnId });
+        const snapshotResource = options.pollUrl === undefined;
         const interval = this.config.pollIntervalMs ?? 1000;
         let cursor = options.lastEventId;
-        const snapshotCursor = (0, run_diff_1.decodeCursor)(options.lastEventId);
+        const snapshotCursor = options.restoredState !== undefined
+            ? (0, run_diff_1.restoredRunCursor)(options.restoredState, options.lastEventId)
+            : (0, run_diff_1.decodeCursor)(options.lastEventId);
         let snapshotMode = false;
         let idleRounds = 0;
         while (!options.signal.aborted) {
             // A run detail takes no cursor query; only an event page is asked to resume from one.
-            const query = cursor === undefined || snapshotMode ? '' : `?after=${encodeURIComponent(cursor)}`;
+            const query = cursor === undefined || snapshotMode || snapshotResource
+                ? ''
+                : `?after=${encodeURIComponent(cursor)}`;
             const payload = await (0, http_1.requestJson)(this.config, `${base}${query}`, { signal: options.signal });
             const page = payload.events ?? payload.results;
             let emitted = 0;

@@ -13,6 +13,7 @@ export interface CopilotConfig extends CopilotTransportConfig {
     resumeDelayMs?: number;
     logger?: CopilotLogger;
     conversationSurface?: 'web' | 'mobile' | 'embed' | 'api';
+    slowRunThresholdMs?: number;
 }
 export declare const DEFAULT_COPILOT_PERMISSION = "ai-assistant-view";
 export interface CopilotProviderProps {

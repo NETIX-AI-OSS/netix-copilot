@@ -162,7 +162,13 @@ function applyEvent(state, event) {
         case 'usage':
             return { ...state, usage: mergeUsage(state.usage, event.usage) };
         case 'done':
-            return { ...state, ...applySummary(state, event), status: 'done', offline: false };
+            return {
+                ...state,
+                ...applySummary(state, event),
+                status: 'done',
+                offline: false,
+                cancellation: undefined,
+            };
         case 'error':
             return {
                 ...state,
@@ -170,9 +176,10 @@ function applyEvent(state, event) {
                 status: 'error',
                 error: event.error,
                 offline: false,
+                cancellation: undefined,
             };
         case 'cancelled':
-            return { ...state, status: 'cancelled', offline: false };
+            return { ...state, status: 'cancelled', offline: false, cancellation: undefined };
         default:
             return state;
     }

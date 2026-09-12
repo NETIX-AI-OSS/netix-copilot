@@ -399,6 +399,30 @@ exports.TRANSCRIPT_CSS = `
   color: var(--nxcp-text-tertiary);
   overflow-wrap: anywhere;
 }
+.nxcp-approval-arguments {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--nxcp-text-muted);
+}
+.nxcp-approval-arguments pre {
+  max-width: 100%;
+  max-height: 280px;
+  margin: 0;
+  padding: 8px;
+  overflow: auto;
+  border: 1px solid var(--nxcp-border);
+  border-radius: var(--nxcp-radius-sm);
+  background: var(--nxcp-surface-3);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.nxcp-approval-arguments code {
+  font-family: var(--nxcp-mono);
+  font-size: 11px;
+  color: var(--nxcp-text);
+}
 .nxcp-approval-detail {
   margin: 0;
   font-size: 12px;

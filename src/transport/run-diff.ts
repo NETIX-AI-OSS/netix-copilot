@@ -1,7 +1,7 @@
 // Turns successive snapshots of one stored run into the streaming event vocabulary.
 // Shared, because two ml-engine resources answer with the same columns: AgenticMLRequest and ConversationTurn.
 
-import type { EnvelopedEvent, JsonObject } from '../types'
+import type { EnvelopedEvent, JsonObject, RunState } from '../types'
 import type { CopilotRunRow } from './transcript'
 import {
   AGENTIC_STATUS,
@@ -71,6 +71,27 @@ export function decodeCursor(raw: string | undefined): RunCursor {
     queuedEmitted: flags.includes('q'),
     usageSignature: decodeURIComponent(parts[4] ?? ''),
   }
+}
+
+// Seed snapshot polling from the transcript already on screen. Tool rows are deliberately
+// replayed and upserted by call id because a restored trace may not correspond one-to-one with
+// execution_log rows; text, plan and chart data can be skipped exactly.
+export function cursorFromRunState(state: RunState): RunCursor {
+  return {
+    textLength: state.text.length,
+    logCount: 0,
+    planEmitted: state.hasPlan,
+    chartEmitted: state.charts.length > 0,
+    usageSignature: '',
+    runStarted: state.turnId !== undefined,
+    queuedEmitted: state.status !== 'queued',
+  }
+}
+
+export function restoredRunCursor(state: RunState, lastEventId: string | undefined): RunCursor {
+  return lastEventId?.startsWith(`${CURSOR_PREFIX}:`) === true
+    ? decodeCursor(lastEventId)
+    : cursorFromRunState(state)
 }
 
 export function isTerminalStatus(status: number | undefined): boolean {

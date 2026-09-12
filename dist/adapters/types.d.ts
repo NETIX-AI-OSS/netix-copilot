@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { CopilotChart, JsonObject } from '../types';
+import type { CopilotChart, CopilotLifecycleEvent, JsonObject } from '../types';
 export interface CopilotUser {
     id: number;
     organizationId: number;
@@ -100,6 +100,7 @@ export interface CopilotAdapters {
         warn: (message: string, detail?: unknown) => void;
         error: (message: string, detail?: unknown) => void;
     };
+    onLifecycleEvent?: (event: CopilotLifecycleEvent) => void;
 }
 export declare function resolveCopilotPrompt(prompt: string, transform: CopilotPromptTransform | undefined, context: CopilotPromptContext): {
     display: string;

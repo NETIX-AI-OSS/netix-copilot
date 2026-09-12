@@ -26,6 +26,9 @@ export interface ConsumeRunOptions {
   lastEventId?: string
   streamUrl?: string
   pollUrl?: string
+  // Restoring an active transcript starts from an authoritative turn snapshot. SSE event ids are
+  // not persisted with transcript rows, so transports use this state to seed their poll cursor.
+  restoredState?: RunState
   onTransportChange?: (name: TransportName) => void
 }
 
@@ -50,6 +53,9 @@ export interface CopilotTransport {
   // Optional so a host transport written against v0.1.0 still satisfies the interface. A
   // transport that cannot rebuild history simply omits it and selecting a thread starts empty.
   fetchThread?(threadId: string, signal?: AbortSignal): Promise<CopilotTranscriptTurn[]>
+  // Access metadata lives on the conversation rather than its turn list. Optional transports
+  // pre-dating shared briefing threads default to owner access.
+  fetchThreadAccess?(threadId: string, signal?: AbortSignal): Promise<{ readOnly: boolean }>
   // Does this cluster serve this transport's contract at all? A capability question, asked of the
   // contract itself, so that giving up on a transport for the life of a tab never rests on how one
   // request happened to fail. Optional for the same reason fetchThread is.

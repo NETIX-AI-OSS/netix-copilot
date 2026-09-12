@@ -150,6 +150,30 @@ describe('reasoning trace mount', () => {
 })
 
 describe('answer body', () => {
+  it('shows every structured argument before an approval decision', () => {
+    const comment = 'A'.repeat(260)
+    mount(
+      <MessageView
+        turn={turn({
+          status: 'streaming',
+          steps: [
+            {
+              id: 'approve-1',
+              title: 'Comment on work order',
+              status: 'awaiting_approval',
+              arguments: { work_order_id: 55, comment },
+            },
+          ],
+        })}
+      />,
+    )
+    expect(screen.getByText('Proposed action details')).toBeTruthy()
+    expect(document.querySelector('.nxcp-approval-arguments')?.textContent).toContain(comment)
+    expect(document.querySelector('.nxcp-approval-arguments')?.textContent).toContain(
+      'work_order_id',
+    )
+  })
+
   it('shows the streaming caret only while text is still arriving', () => {
     const { rerender } = mount(<MessageView turn={turn({ status: 'streaming', text: 'It' })} />)
     expect(document.querySelector('.nxcp-answer .nxcp-caret')).toBeTruthy()

@@ -302,13 +302,37 @@ describe('SseTransport', () => {
     ])
   })
 
+  it('restores an active transcript through seeded turn-detail polling without duplicating text', async () => {
+    const { transport, fetchImpl } = sseTransport([
+      jsonResponse({ id: 't1', status: 1, response_text: 'partial answer' }),
+    ])
+    const events = await collect(transport, {
+      restoredState: {
+        status: 'streaming',
+        turnId: 't1',
+        hasPlan: false,
+        steps: [],
+        text: 'partial',
+        charts: [],
+        offline: false,
+      },
+    })
+    expect((fetchImpl.mock.calls[0] as [string])[0]).toBe(
+      'https://ml.example.com/api/copilot-turn/t1/',
+    )
+    expect(events.map((entry) => entry.event)).toEqual([
+      expect.objectContaining({ type: 'message_delta', text: ' answer' }),
+      expect.objectContaining({ type: 'done' }),
+    ])
+  })
+
   it('never asks a run detail to resume from a cursor it does not understand', async () => {
     const { transport, fetchImpl } = sseTransport([
       errorResponse(404),
       jsonResponse({ id: 91, status: 3, response_text: 'a' }),
       jsonResponse({ id: 91, status: 1, response_text: 'ab' }),
     ])
-    await collect(transport)
+    await collect(transport, { lastEventId: 'redis-event-3' })
     for (const call of fetchImpl.mock.calls.slice(1)) {
       expect((call as [string])[0]).not.toContain('after=')
     }
@@ -320,7 +344,7 @@ describe('SseTransport', () => {
       jsonResponse({ events: [{ event: 'message_delta', text: 'a', id: 'c1' }] }),
       jsonResponse({ events: [{ event: 'done', id: 'c2' }], done: true }),
     ])
-    await collect(transport)
+    await collect(transport, { pollUrl: '/custom/events/t1' })
     const lastUrl = (fetchImpl.mock.calls[2] as [string, RequestInit])[0]
     expect(lastUrl).toContain('after=c1')
   })
@@ -455,6 +479,7 @@ describe('SseTransport', () => {
             title: 'Why is AHU-1 offline?',
             last_activity_at: '2026-08-20T10:00:00Z',
             updated_on: '2026-01-01T00:00:00Z',
+            read_only: true,
           },
         ],
       }),
@@ -468,8 +493,19 @@ describe('SseTransport', () => {
         id: '12',
         title: 'Why is AHU-1 offline?',
         updatedAt: Date.parse('2026-08-20T10:00:00Z'),
+        readOnly: true,
       },
     ])
+  })
+
+  it('reads briefing-recipient access from the conversation detail', async () => {
+    const { transport, fetchImpl } = sseTransport([
+      jsonResponse({ id: 12, title: 'Morning briefing', read_only: true }),
+    ])
+    await expect(transport.fetchThreadAccess('12')).resolves.toEqual({ readOnly: true })
+    expect((fetchImpl.mock.calls[0] as [string])[0]).toBe(
+      'https://ml.example.com/api/copilot-conversation/12/',
+    )
   })
 
   it('rebuilds a thread from its turn list, artifacts and all', async () => {
@@ -550,9 +586,9 @@ describe('SseTransport', () => {
     await expect(transport.fetchThread('12')).rejects.toThrow(/status 500/)
   })
 
-  it('swallows a failing cancel, since the run ends server-side anyway', async () => {
+  it('surfaces a failing cancel so the UI keeps the server-side run active', async () => {
     const { transport } = sseTransport([errorResponse(500)])
-    await expect(transport.cancelTurn('t1')).resolves.toBeUndefined()
+    await expect(transport.cancelTurn('t1')).rejects.toThrow(/status 500/)
   })
 })
 

@@ -28,6 +28,9 @@ export declare class SseTransport implements CopilotTransport {
     cancelTurn(turnId: string): Promise<void>;
     respondToApproval(turnId: string, stepId: string, approved: boolean): Promise<void>;
     fetchThread(threadId: string, signal?: AbortSignal): Promise<CopilotTranscriptTurn[]>;
+    fetchThreadAccess(threadId: string, signal?: AbortSignal): Promise<{
+        readOnly: boolean;
+    }>;
     listThreads(signal?: AbortSignal): Promise<CopilotThread[]>;
     updateThread(threadId: string, patch: ThreadPatch, signal?: AbortSignal): Promise<CopilotThread>;
     deleteThread(threadId: string, signal?: AbortSignal): Promise<void>;
