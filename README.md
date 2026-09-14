@@ -26,13 +26,13 @@ neither SWR nor react-query, bundles no chart library, and imports no stylesheet
 ## Install
 
 ```bash
-pnpm add github:NETIX-AI-OSS/netix-copilot#v0.4.1
+pnpm add github:NETIX-AI-OSS/netix-copilot#v0.4.2
 ```
 
 ```jsonc
 // package.json
 "dependencies": {
-  "netix-copilot": "github:NETIX-AI-OSS/netix-copilot#v0.4.1"
+  "netix-copilot": "github:NETIX-AI-OSS/netix-copilot#v0.4.2"
 }
 ```
 
