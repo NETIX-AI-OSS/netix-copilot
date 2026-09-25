@@ -134,7 +134,7 @@ export class CopilotEngine {
   private activeSlowHandle: ReturnType<typeof setTimeout> | undefined
   private readonly liveTurnIds = new Set<string>()
   private readonly cancelAfterCreate = new Set<number>()
-  private dockMode: 'min' | 'dock' | 'full' = 'min'
+  private dockMode: 'min' | 'dock' | 'expanded' | 'full' = 'min'
 
   constructor(options: CopilotEngineOptions) {
     this.options = options
@@ -295,7 +295,7 @@ export class CopilotEngine {
     else this.cancelAfterCreate.add(this.threadSeq)
   }
 
-  recordDockMode(mode: 'min' | 'dock' | 'full'): void {
+  recordDockMode(mode: 'min' | 'dock' | 'expanded' | 'full'): void {
     const previous = this.dockMode
     this.dockMode = mode
     if (previous === 'min' && mode !== 'min') this.emitLifecycle({ type: 'dock_opened', mode })
@@ -701,6 +701,15 @@ export class CopilotEngine {
     this.clearSlowTimer()
     this.activeRestoredState = undefined
     const threadId = this.snapshot.threadId
+    // A conversation started here is missing from a list loaded earlier, so the rail would not
+    // show it (or mark it current) until a reload. Refetch once when its first run settles.
+    if (
+      threadId !== undefined &&
+      this.snapshot.threadsLoaded &&
+      !this.snapshot.threads.some((thread) => thread.id === threadId)
+    ) {
+      void this.loadThreads()
+    }
     if (threadId === undefined || next.status === 'cancelled') return
     const durationMs =
       next.executionMs ??

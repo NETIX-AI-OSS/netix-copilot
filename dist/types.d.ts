@@ -48,6 +48,7 @@ export interface CopilotUsage {
     tokensOut?: number;
     calls?: number;
     costUsd?: number;
+    contextWindow?: number;
     model?: string;
 }
 export interface CopilotResultData {
@@ -202,7 +203,7 @@ export interface RunState {
 }
 export type CopilotLifecycleEvent = {
     type: 'dock_opened';
-    mode: 'dock' | 'full';
+    mode: 'dock' | 'expanded' | 'full';
 } | {
     type: 'message_sent';
     threadId?: string;

@@ -111,6 +111,9 @@ export interface CopilotUsage {
   // LLM round trips for the turn, reported by the live agentic contract.
   calls?: number
   costUsd?: number
+  // The model's context window in tokens, when the backend reports it. The usage meter fills
+  // against it; without it the meter shows the figures and no percentage.
+  contextWindow?: number
   model?: string
 }
 
@@ -328,7 +331,7 @@ export interface RunState {
 }
 
 export type CopilotLifecycleEvent =
-  | { type: 'dock_opened'; mode: 'dock' | 'full' }
+  | { type: 'dock_opened'; mode: 'dock' | 'expanded' | 'full' }
   | {
       type: 'message_sent'
       threadId?: string

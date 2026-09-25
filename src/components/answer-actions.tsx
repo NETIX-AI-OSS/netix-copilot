@@ -53,7 +53,7 @@ export function groundingCounts(run: RunState): { tools: number; agents: number 
   return { tools, agents: agentSteps(run.steps).length }
 }
 
-// The strip under a finished answer: copy, regenerate and the grounding caption. Regenerate only
+// The strip under a finished answer: copy, regenerate, the grounding caption and the time. Regenerate only
 // belongs to the newest turn -- an earlier one would re-ask a question the thread has moved past.
 export function AnswerActions({ turn, showCaption = true }: AnswerActionsProps): ReactNode {
   const { t } = useCopilotAdapters()
@@ -76,7 +76,7 @@ export function AnswerActions({ turn, showCaption = true }: AnswerActionsProps):
     })
   }
 
-  if (run.text === '' && !canRegenerate && !caption) return null
+  const time = new Date(turn.createdAt)
 
   const { tools, agents } = groundingCounts(run)
   const seconds = ((run.executionMs ?? 0) / 1000).toFixed(1)
@@ -129,13 +129,16 @@ export function AnswerActions({ turn, showCaption = true }: AnswerActionsProps):
           </svg>
         </button>
       ) : null}
-      {caption ? (
-        <span className='nxcp-actions-caption'>
-          {agents > 0
+      <span className='nxcp-actions-caption'>
+        {caption
+          ? agents > 0
             ? t('copilot.answer.groundingAgents', { tools, agents, seconds })
-            : t('copilot.answer.grounding', { tools, seconds })}
-        </span>
-      ) : null}
+            : t('copilot.answer.grounding', { tools, seconds })
+          : null}
+        <time className='nxcp-actions-time' dateTime={time.toISOString()}>
+          {time.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+        </time>
+      </span>
     </div>
   )
 }

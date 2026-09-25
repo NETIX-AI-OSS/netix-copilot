@@ -190,6 +190,16 @@ describe('answer strip', () => {
   })
 })
 
+describe('panel header', () => {
+  it('keeps the caption a v0.4 full-mode page shows, and only there', () => {
+    const { unmount } = mount(<CopilotPanel layout='full' />)
+    expect(screen.getByText('operations · maintenance · energy').className).toBe('nxcp-caption')
+    unmount()
+    mount(<CopilotPanel layout='dock' />)
+    expect(screen.queryByText('operations · maintenance · energy')).toBeNull()
+  })
+})
+
 describe('empty state', () => {
   it('renders the SDK placeholder with its tile, heading and body by default', () => {
     mount(<CopilotPanel />)

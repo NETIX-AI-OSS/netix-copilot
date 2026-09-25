@@ -12,7 +12,7 @@ function SparkIcon({ size }) {
 function QuickPrompts({ chips, onSelect }) {
     if (chips.length === 0)
         return null;
-    return ((0, jsx_runtime_1.jsx)("div", { className: 'nxcp-quick-prompts', children: chips.map((prompt) => ((0, jsx_runtime_1.jsx)("button", { type: 'button', className: 'nxcp-quick-prompt', onClick: () => onSelect(prompt), children: prompt }, prompt))) }));
+    return ((0, jsx_runtime_1.jsx)("div", { className: 'nxcp-quick-prompts', children: chips.map((prompt) => ((0, jsx_runtime_1.jsxs)("button", { type: 'button', className: 'nxcp-quick-prompt', onClick: () => onSelect(prompt), children: [(0, jsx_runtime_1.jsx)("span", { className: 'nxcp-quick-prompt-text', children: prompt }), (0, jsx_runtime_1.jsx)("svg", { className: 'nxcp-quick-prompt-arrow', width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', "aria-hidden": 'true', children: (0, jsx_runtime_1.jsx)("path", { d: 'M5 12h14M13 6l6 6-6 6' }) })] }, prompt))) }));
 }
 function EmptyState({ heading, body, chips, onSelect }) {
     return ((0, jsx_runtime_1.jsxs)("div", { className: 'nxcp-empty-state', children: [(0, jsx_runtime_1.jsx)("span", { className: 'nxcp-empty-tile', children: (0, jsx_runtime_1.jsx)(SparkIcon, { size: 22 }) }), (0, jsx_runtime_1.jsx)("h3", { className: 'nxcp-empty-heading', children: heading }), (0, jsx_runtime_1.jsx)("p", { className: 'nxcp-empty-body', children: body }), (0, jsx_runtime_1.jsx)(QuickPrompts, { chips: chips, onSelect: onSelect })] }));

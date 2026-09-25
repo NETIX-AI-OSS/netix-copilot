@@ -37,7 +37,8 @@ describe('Launcher', () => {
     // The accessible name is the visible label, so voice control can say what it sees.
     expect(screen.getByText('Ask Copilot')).toBeTruthy()
     expect(pill.querySelector('.nxcp-launcher-chevron')).toBeNull()
-    expect(pill.querySelector('.nxcp-launcher-halo')?.getAttribute('aria-hidden')).toBe('true')
+    // No looping halo: a pill that pulses forever pulls the eye off the page it sits on.
+    expect(pill.querySelector('.nxcp-launcher-halo')).toBeNull()
   })
 
   it('reveals the label and chevron on hover and on focus', () => {

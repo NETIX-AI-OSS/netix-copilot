@@ -481,3 +481,31 @@ describe('ReasoningTrace collapse rules', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 })
+
+describe('step row summaries', () => {
+  it('shows a readable argument summary and drops one that is a JSON dump', () => {
+    render(
+      wrap(
+        <ReasoningTrace
+          defaultOpen
+          run={run({
+            status: 'streaming',
+            steps: [
+              step('a', { tool: 'realtime_data_retrieve', argsSummary: 'AHU-01', status: 'ok' }),
+              step('b', {
+                tool: 'make_plan',
+                argsSummary: '{"reasoning": "This is a live query"}',
+                status: 'ok',
+              }),
+            ],
+          })}
+        />,
+      ),
+    )
+    const summaries = [...document.querySelectorAll('.nxcp-row-args')].map(
+      (node) => node.textContent,
+    )
+    expect(summaries).toEqual(['AHU-01'])
+    expect(screen.queryByText(/"reasoning"/)).toBeNull()
+  })
+})

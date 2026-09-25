@@ -37,7 +37,7 @@ describe('list markers', () => {
 
   it('typesets the body at 14px in the ink colour', () => {
     expect(COPILOT_CSS).toContain(
-      '.nxcp-answer {\n  max-width: 860px;\n  font-size: 14px;\n  line-height: 1.6;\n  color: var(--nxcp-text);',
+      '.nxcp-answer {\n  max-width: 860px;\n  font-size: 14px;\n  line-height: 1.65;\n  color: var(--nxcp-text);',
     )
   })
 })

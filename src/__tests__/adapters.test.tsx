@@ -3,12 +3,13 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { CopilotProvider, useCopilotEngine, useCopilotState } from '../adapters/context'
 import { buildScope, resolveCopilotPrompt } from '../adapters/types'
+import { copilotDeepLink } from '../adapters/url'
 import { Composer } from '../components/composer'
 import { CopilotHttpError, isResourceError, joinUrl, requestJson } from '../transport/http'
 import type { ConsumeRunOptions, CopilotTransport, CreatedTurn } from '../transport/types'
 import type { SendTurnInput } from '../types'
 import { createFallbackTranslate, interpolate } from '../ui/i18n'
-import { themeToCssVars } from '../ui/theme'
+import { hostVariableTheme, themeToCssVars } from '../ui/theme'
 import { COPILOT_Z_INDEX, COPILOT_Z_INDEX_NOTES } from '../ui/z-index'
 import { errorResponse, jsonResponse, testAdapters } from './helpers'
 
@@ -241,8 +242,39 @@ describe('theme tokens', () => {
     expect(style.colorScheme).toBe('dark')
   })
 
+  it('maps the large radius the dock and the expanded sheet use', () => {
+    const style = themeToCssVars({ radiusXl: '20px' }) as Record<string, string>
+    expect(style['--nxcp-radius-xl']).toBe('20px')
+  })
+
+  it('follows the host variables live, each with the stock value as its fallback', () => {
+    const theme = hostVariableTheme()
+    expect(theme.surface).toBe('var(--card, #ffffff)')
+    expect(theme.accent).toBe('var(--primary, #1d63e0)')
+    expect(theme.success).toBe('var(--status-success, var(--status-ok, #1f8a54))')
+    // Inherits the host page's scheme instead of pinning one.
+    expect(theme.colorScheme).toBeUndefined()
+    const style = themeToCssVars(theme) as Record<string, string>
+    expect(style['--nxcp-surface']).toBe('var(--card, #ffffff)')
+    expect(style.colorScheme).toBeUndefined()
+  })
+
+  it('lets a host override single tokens of the variable theme', () => {
+    const theme = hostVariableTheme({ domainCafm: 'var(--brand-cafm)' })
+    expect(theme.domainCafm).toBe('var(--brand-cafm)')
+    expect(theme.surface).toBe('var(--card, #ffffff)')
+  })
+
   it('skips tokens the host did not set', () => {
     expect(Object.keys(themeToCssVars({}))).toEqual([])
+  })
+})
+
+describe('copilotDeepLink', () => {
+  it('builds the URL that opens the dock, on a thread when one is named', () => {
+    expect(copilotDeepLink()).toBe('/?ai_open=1')
+    expect(copilotDeepLink('55')).toBe('/?ai_open=1&thread=55')
+    expect(copilotDeepLink('55', '/systems/lake')).toBe('/systems/lake?ai_open=1&thread=55')
   })
 })
 

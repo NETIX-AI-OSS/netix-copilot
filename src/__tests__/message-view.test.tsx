@@ -68,12 +68,10 @@ function mount(children: ReactNode, overrides: Partial<CopilotAdapters> = {}) {
 }
 
 describe('meta row', () => {
-  it('names the assistant through the host title and stamps the time', () => {
+  it('draws no header row for a plain answer and stamps the time in the answer strip', () => {
     mount(<MessageView turn={turn({ text: 'It lost power.' })} />)
-    const meta = document.querySelector('.nxcp-assistant-meta') as HTMLElement
-    expect(meta.querySelector('.nxcp-assistant-name')?.textContent).toBe('Copilot')
-    expect(meta.querySelector('.nxcp-avatar svg')).toBeTruthy()
-    const time = meta.querySelector('time') as HTMLTimeElement
+    expect(document.querySelector('.nxcp-assistant-meta')).toBeNull()
+    const time = document.querySelector('.nxcp-actions time') as HTMLTimeElement
     expect(time.getAttribute('dateTime')).toBe('2026-09-03T09:05:00.000Z')
     expect(time.textContent).toBe(
       new Date(Date.UTC(2026, 8, 3, 9, 5)).toLocaleTimeString(undefined, {
@@ -141,8 +139,8 @@ describe('reasoning trace mount', () => {
     expect(screen.getByTestId('trace').getAttribute('data-open')).toBe('false')
   })
 
-  it('sits between the meta row and the answer', () => {
-    mount(<MessageView turn={turn({ text: 'Answer.' })} />)
+  it('sits between the status chips and the answer', () => {
+    mount(<MessageView turn={turn({ text: 'Answer.', modelTier: 'high' })} />)
     const block = document.querySelector('.nxcp-assistant') as HTMLElement
     const order = [...block.children].map((child) => child.className || child.dataset.testid)
     expect(order).toEqual(['nxcp-assistant-meta', 'trace', 'nxcp-answer', 'nxcp-actions'])

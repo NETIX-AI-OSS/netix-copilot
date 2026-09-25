@@ -11,9 +11,6 @@ import { Markdown } from './markdown'
 import { ReasoningTrace } from './reasoning-trace'
 import { hasResultContent, ResultTable } from './result-table'
 
-// The house sparkle, the same path the assistant header uses.
-const SPARK = 'M12 3l1.8 5.4L19 10l-5.2 1.6L12 17l-1.8-5.4L5 10l5.2-1.6z'
-
 export interface MessageViewProps {
   turn: CopilotTurnView
   // Off for a host that renders its own status chips. On by default because dropping the run
@@ -22,11 +19,7 @@ export interface MessageViewProps {
   showResultData?: boolean
 }
 
-function formatTime(epochMs: number): string {
-  return new Date(epochMs).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
-}
-
-// One prompt and everything the run produced for it: the assistant meta row, the reasoning
+// One prompt and everything the run produced for it: any status chips, the reasoning
 // trace, the streaming answer, the artifacts, any approval the backend is waiting on and the
 // answer strip.
 //
@@ -45,38 +38,33 @@ export function MessageView({
     ? []
     : run.steps.filter((step) => step.status === 'awaiting_approval')
   const table = showResultData && run.resultData && hasResultContent(run.resultData)
+  // Only what a reader needs to know about the run: a non-default tier or how it ended. Who
+  // answered and when needs no header row; the time sits in the answer strip.
+  const chips: { key: string; tone: 'tier' | 'warning'; label: string }[] = []
+  if (run.modelTier !== undefined && run.modelTier !== 'base') {
+    chips.push({ key: 'tier', tone: 'tier', label: t(`copilot.tier.${run.modelTier}`) })
+  }
+  if (run.status === 'error') {
+    chips.push({ key: 'error', tone: 'warning', label: t('copilot.status.failed') })
+  }
+  if (run.status === 'cancelled') {
+    chips.push({ key: 'cancelled', tone: 'warning', label: t('copilot.status.cancelled') })
+  }
 
   return (
     <article className='nxcp-turn'>
       <p className='nxcp-bubble'>{turn.prompt}</p>
 
       <div className='nxcp-assistant'>
-        <div className='nxcp-assistant-meta'>
-          <span className='nxcp-avatar' aria-hidden='true'>
-            <svg width='12' height='12' viewBox='0 0 24 24' fill='currentColor' focusable='false'>
-              <path d={SPARK} />
-            </svg>
-          </span>
-          <span className='nxcp-assistant-name'>{t('copilot.dock.title')}</span>
-          {run.modelTier !== undefined && run.modelTier !== 'base' ? (
-            <span className='nxcp-assistant-chip' data-tone='tier'>
-              {t(`copilot.tier.${run.modelTier}`)}
-            </span>
-          ) : null}
-          <time className='nxcp-assistant-time' dateTime={new Date(turn.createdAt).toISOString()}>
-            {formatTime(turn.createdAt)}
-          </time>
-          {run.status === 'error' ? (
-            <span className='nxcp-assistant-chip' data-tone='warning'>
-              {t('copilot.status.failed')}
-            </span>
-          ) : null}
-          {run.status === 'cancelled' ? (
-            <span className='nxcp-assistant-chip' data-tone='warning'>
-              {t('copilot.status.cancelled')}
-            </span>
-          ) : null}
-        </div>
+        {chips.length > 0 ? (
+          <div className='nxcp-assistant-meta'>
+            {chips.map((chip) => (
+              <span key={chip.key} className='nxcp-assistant-chip' data-tone={chip.tone}>
+                {chip.label}
+              </span>
+            ))}
+          </div>
+        ) : null}
 
         <ReasoningTrace run={run} defaultOpen={streaming} />
 

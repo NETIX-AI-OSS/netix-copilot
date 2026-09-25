@@ -8,27 +8,30 @@
 export const TRACE_CSS = `
 .nxcp-trace {
   container-type: inline-size;
-  border: 1px solid var(--nxcp-border);
-  border-radius: var(--nxcp-radius-md);
-  background: var(--nxcp-surface-2);
-  overflow: hidden;
-  font-size: 12px;
-  line-height: 16px;
+  font-size: 12.5px;
+  line-height: 18px;
 }
 .nxcp-trace-toggle {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 8px;
-  width: 100%;
+  max-width: 100%;
   min-width: 0;
-  padding: 8px 12px;
+  padding: 3px 8px 3px 2px;
+  margin-inline-start: -2px;
   border: 0;
+  border-radius: var(--nxcp-radius-md);
   background: transparent;
   color: var(--nxcp-text-muted);
   font: inherit;
-  font-weight: 600;
+  font-weight: 500;
   text-align: start;
   cursor: pointer;
+  transition: color var(--nxcp-motion-fast), background-color var(--nxcp-motion-fast);
+}
+.nxcp-trace-toggle:hover {
+  color: var(--nxcp-text);
+  background: var(--nxcp-surface-2);
 }
 .nxcp-trace-toggle:focus-visible,
 .nxcp-row-head:focus-visible,
@@ -37,7 +40,7 @@ export const TRACE_CSS = `
   outline-offset: -2px;
 }
 .nxcp-trace-label {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -79,15 +82,32 @@ export const TRACE_CSS = `
   transform: rotate(45deg) translateY(-2px);
   transition: transform var(--nxcp-motion-fast);
 }
-/* The header label fills the row, so the elapsed figure needs no auto margin of its own. */
+/* The header sizes to its content, so the elapsed figure needs no auto margin of its own. */
 .nxcp-trace-elapsed { margin-inline-start: 0; }
+/* While the run works, the header label shimmers: the one moving thing on the screen. */
+.nxcp-trace:is([data-status='creating'], [data-status='queued'], [data-status='streaming']) .nxcp-trace-label {
+  color: transparent;
+  background: linear-gradient(
+      90deg,
+      var(--nxcp-text-tertiary) 0%,
+      var(--nxcp-text-tertiary) 40%,
+      var(--nxcp-text) 50%,
+      var(--nxcp-text-tertiary) 60%,
+      var(--nxcp-text-tertiary) 100%
+    )
+    0 0 / 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: nxcp-shimmer 2.2s linear infinite;
+}
 [aria-expanded='true'] > .nxcp-chevron { transform: rotate(-135deg) translateY(-1px); }
 .nxcp-trace-body {
   display: flex;
   flex-direction: column;
-  gap: 7px;
-  padding: 9px 12px;
-  border-top: 1px solid var(--nxcp-border);
+  gap: 6px;
+  margin: 6px 0 2px 7px;
+  padding: 2px 0 2px 14px;
+  border-inline-start: 1.5px solid var(--nxcp-border);
 }
 /* Author display rules beat the UA's [hidden], so the collapse must be restated here. */
 .nxcp-trace-body[hidden],
@@ -208,9 +228,9 @@ button.nxcp-row-head:hover { background: var(--nxcp-surface-3); }
   min-width: 0;
   padding: 8px 10px;
   border: 1px solid var(--nxcp-border);
-  border-inline-start: 3px solid var(--nxcp-accent);
+  border-inline-start: 2px solid var(--nxcp-accent);
   border-radius: var(--nxcp-radius-md);
-  background: var(--nxcp-surface);
+  background: var(--nxcp-surface-2);
 }
 .nxcp-agent[data-domain='cafm'] { border-inline-start-color: var(--nxcp-domain-cafm); }
 .nxcp-agent-head {
@@ -290,6 +310,12 @@ button.nxcp-row-head:hover { background: var(--nxcp-surface-3); }
   .nxcp-glyph[data-glyph='ring'],
   .nxcp-glyph-dot,
   .nxcp-row[data-status='running'] > .nxcp-row-head { animation: none; }
-  .nxcp-chevron { transition: none; }
+  .nxcp-chevron,
+  .nxcp-trace-toggle { transition: none; }
+  .nxcp-trace:is([data-status='creating'], [data-status='queued'], [data-status='streaming']) .nxcp-trace-label {
+    color: var(--nxcp-text-muted);
+    background: none;
+    animation: none;
+  }
 }
 `

@@ -47,7 +47,7 @@ function groundingCounts(run) {
     const tools = reported > 0 ? reported : run.steps.filter((step) => !(0, trace_model_1.isAgentStep)(step)).length;
     return { tools, agents: (0, trace_model_1.agentSteps)(run.steps).length };
 }
-// The strip under a finished answer: copy, regenerate and the grounding caption. Regenerate only
+// The strip under a finished answer: copy, regenerate, the grounding caption and the time. Regenerate only
 // belongs to the newest turn -- an earlier one would re-ask a question the thread has moved past.
 function AnswerActions({ turn, showCaption = true }) {
     const { t } = (0, context_1.useCopilotAdapters)();
@@ -66,11 +66,12 @@ function AnswerActions({ turn, showCaption = true }) {
                 : { message: t('copilot.answer.copyUnavailable'), tone: 'error' });
         });
     };
-    if (run.text === '' && !canRegenerate && !caption)
-        return null;
+    const time = new Date(turn.createdAt);
     const { tools, agents } = groundingCounts(run);
     const seconds = ((run.executionMs ?? 0) / 1000).toFixed(1);
-    return ((0, jsx_runtime_1.jsxs)("div", { className: 'nxcp-actions', children: [run.text !== '' ? ((0, jsx_runtime_1.jsx)("button", { type: 'button', className: 'nxcp-actions-button', title: t('copilot.answer.copy'), "aria-label": t('copilot.answer.copy'), onClick: copy, children: (0, jsx_runtime_1.jsxs)("svg", { width: '12', height: '12', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: '2.2', "aria-hidden": 'true', focusable: 'false', children: [(0, jsx_runtime_1.jsx)("rect", { x: '9', y: '9', width: '12', height: '12', rx: '2' }), (0, jsx_runtime_1.jsx)("path", { d: 'M5 15V5a2 2 0 0 1 2-2h10' })] }) })) : null, canRegenerate ? ((0, jsx_runtime_1.jsx)("button", { type: 'button', className: 'nxcp-actions-button', title: t('copilot.answer.regenerate'), "aria-label": t('copilot.answer.regenerate'), disabled: busy, onClick: () => regenerate(turn.id), children: (0, jsx_runtime_1.jsx)("svg", { width: '12', height: '12', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: '2.2', "aria-hidden": 'true', focusable: 'false', children: (0, jsx_runtime_1.jsx)("path", { d: 'M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6' }) }) })) : null, caption ? ((0, jsx_runtime_1.jsx)("span", { className: 'nxcp-actions-caption', children: agents > 0
-                    ? t('copilot.answer.groundingAgents', { tools, agents, seconds })
-                    : t('copilot.answer.grounding', { tools, seconds }) })) : null] }));
+    return ((0, jsx_runtime_1.jsxs)("div", { className: 'nxcp-actions', children: [run.text !== '' ? ((0, jsx_runtime_1.jsx)("button", { type: 'button', className: 'nxcp-actions-button', title: t('copilot.answer.copy'), "aria-label": t('copilot.answer.copy'), onClick: copy, children: (0, jsx_runtime_1.jsxs)("svg", { width: '12', height: '12', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: '2.2', "aria-hidden": 'true', focusable: 'false', children: [(0, jsx_runtime_1.jsx)("rect", { x: '9', y: '9', width: '12', height: '12', rx: '2' }), (0, jsx_runtime_1.jsx)("path", { d: 'M5 15V5a2 2 0 0 1 2-2h10' })] }) })) : null, canRegenerate ? ((0, jsx_runtime_1.jsx)("button", { type: 'button', className: 'nxcp-actions-button', title: t('copilot.answer.regenerate'), "aria-label": t('copilot.answer.regenerate'), disabled: busy, onClick: () => regenerate(turn.id), children: (0, jsx_runtime_1.jsx)("svg", { width: '12', height: '12', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: '2.2', "aria-hidden": 'true', focusable: 'false', children: (0, jsx_runtime_1.jsx)("path", { d: 'M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6' }) }) })) : null, (0, jsx_runtime_1.jsxs)("span", { className: 'nxcp-actions-caption', children: [caption
+                        ? agents > 0
+                            ? t('copilot.answer.groundingAgents', { tools, agents, seconds })
+                            : t('copilot.answer.grounding', { tools, seconds })
+                        : null, (0, jsx_runtime_1.jsx)("time", { className: 'nxcp-actions-time', dateTime: time.toISOString(), children: time.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) })] })] }));
 }

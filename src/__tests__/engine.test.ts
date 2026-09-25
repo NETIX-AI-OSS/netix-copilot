@@ -1032,3 +1032,41 @@ describe('browserOnlineSource', () => {
     expect(seen).toEqual([false, true])
   })
 })
+
+describe('CopilotEngine thread list freshness', () => {
+  it('refetches a loaded list once when a new thread its first run settles on is missing', async () => {
+    const { engine, transport } = makeEngine()
+    const list = vi.spyOn(transport, 'listThreads')
+    await engine.loadThreads()
+    expect(list).toHaveBeenCalledTimes(1)
+
+    await engine.send('hello')
+    transport.emit({ event: { type: 'run_started', turnId: 't1' } })
+    transport.threads = [{ id: 'th1', title: 'hello', updatedAt: 1 }]
+    transport.emit({ event: { type: 'done', turnId: 't1' } })
+    await flush()
+
+    expect(list).toHaveBeenCalledTimes(2)
+    expect(engine.getSnapshot().threads.map((thread) => thread.id)).toEqual(['th1'])
+  })
+
+  it('leaves the list alone when it already names the thread, or was never loaded', async () => {
+    const listed = makeEngine()
+    listed.transport.threads = [{ id: 'th1', title: 'earlier', updatedAt: 1 }]
+    await listed.engine.loadThreads()
+    const listedSpy = vi.spyOn(listed.transport, 'listThreads')
+    await listed.engine.send('hello')
+    listed.transport.emit({ event: { type: 'run_started', turnId: 't1' } })
+    listed.transport.emit({ event: { type: 'done', turnId: 't1' } })
+    await flush()
+    expect(listedSpy).not.toHaveBeenCalled()
+
+    const unloaded = makeEngine()
+    const unloadedSpy = vi.spyOn(unloaded.transport, 'listThreads')
+    await unloaded.engine.send('hello')
+    unloaded.transport.emit({ event: { type: 'run_started', turnId: 't1' } })
+    unloaded.transport.emit({ event: { type: 'done', turnId: 't1' } })
+    await flush()
+    expect(unloadedSpy).not.toHaveBeenCalled()
+  })
+})

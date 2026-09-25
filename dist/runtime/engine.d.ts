@@ -78,7 +78,7 @@ export declare class CopilotEngine {
     get isStreaming(): boolean;
     send(prompt: string, scope?: JsonObject, options?: CopilotSendOptions): Promise<void>;
     cancel(): void;
-    recordDockMode(mode: 'min' | 'dock' | 'full'): void;
+    recordDockMode(mode: 'min' | 'dock' | 'expanded' | 'full'): void;
     approve(stepId: string, approved: boolean): Promise<void>;
     startNewThread(): void;
     selectThread(threadId: string): void;

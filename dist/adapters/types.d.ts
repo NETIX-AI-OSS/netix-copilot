@@ -53,6 +53,7 @@ export interface CopilotThemeTokens {
     radiusSm?: string;
     radiusMd?: string;
     radiusLg?: string;
+    radiusXl?: string;
     radiusPill?: string;
     fontFamily?: string;
     monoFontFamily?: string;

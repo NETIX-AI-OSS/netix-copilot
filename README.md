@@ -1,10 +1,12 @@
 # netix-copilot
 
-Version 0.4.0 is the assistant redesign: a floating dock with a launcher pill, a `min` · `dock` ·
-`full` mode machine, a grouped history rail, artifact cards, and a **reasoning trace** that shows
-the run plan, the specialist sub-agents and their tool calls as they happen. Every v0.3.0 export,
-prop and host-facing class name is preserved, and a backend that predates the new events still
-renders correctly.
+Version 0.5.0 is a redesign toward current coding-agent UIs — a quieter dock, an inline reasoning
+trace, a composer with tier and usage popovers — and adds an in-package **`expanded`** mode, so a
+host gets a large view with the history rail without a page or route of its own. The engine,
+transport and wire contract are unchanged from 0.4; see the CHANGELOG for the host-facing
+behaviour changes. Version 0.4.0 introduced the assistant design: the `min` · `dock` mode machine,
+a grouped history rail, artifact cards and a **reasoning trace** that shows the run plan, the
+specialist sub-agents and their tool calls as they happen.
 
 ```tsx
 <CopilotProvider config={{ ...config, conversationSurface: 'embed' }} adapters={adapters}>
@@ -26,13 +28,13 @@ neither SWR nor react-query, bundles no chart library, and imports no stylesheet
 ## Install
 
 ```bash
-pnpm add github:NETIX-AI-OSS/netix-copilot#v0.4.2
+pnpm add github:NETIX-AI-OSS/netix-copilot#v0.5.0
 ```
 
 ```jsonc
 // package.json
 "dependencies": {
-  "netix-copilot": "github:NETIX-AI-OSS/netix-copilot#v0.4.2"
+  "netix-copilot": "github:NETIX-AI-OSS/netix-copilot#v0.5.0"
 }
 ```
 
@@ -83,31 +85,45 @@ function AppShell() {
 
 ### Opening the dock from the host
 
-`CopilotDock` is uncontrolled by default and remembers whether it was open. Supply `open` and the
-host owns the state instead — which is what a URL contract, a topbar button or a deep link needs.
+The simplest wiring is the URL. Pass `urlState` — two functions over the host router's search
+params — and the dock does the rest: `?ai_open=1` opens it, `&thread=<id>` restores that
+conversation once, opening writes the flag, closing clears both, and a dock the user opened stays
+open when navigation drops the flag. `copilotDeepLink(threadId?, path?)` builds such a link and
+`COPILOT_URL_PARAMS` names the params.
 
 ```tsx
-const [params, setParams] = useSearchParams()
-const open = params.get('ai_open') === '1'
+function useRouterCopilotUrl(): CopilotUrlState {
+  const [params, setParams] = useSearchParams()
+  return useMemo(
+    () => ({
+      get: (param) => params.get(param),
+      set: (changes) =>
+        setParams(
+          (current) => {
+            const next = new URLSearchParams(current)
+            for (const [key, value] of Object.entries(changes)) {
+              if (value === null) next.delete(key)
+              else next.set(key, value)
+            }
+            return next
+          },
+          { replace: true },
+        ),
+    }),
+    [params, setParams],
+  )
+}
 
-<CopilotDock
-  open={open}
-  onOpenChange={(next) => {
-    setParams((current) => {
-      if (next) current.set('ai_open', '1')
-      else current.delete('ai_open')
-      return current
-    })
-  }}
-  showLauncher={false}
-/>
+;<CopilotDock urlState={useRouterCopilotUrl()} />
 ```
 
-Precedence is: a supplied `open` prop, then the stored value, then `defaultOpen`, then closed.
-While `open` is supplied nothing is read from or written to localStorage, so the host's value is
-never overwritten by a stale one.
+Without `urlState`, `CopilotDock` is uncontrolled and remembers whether it was open. Supply `open`
+(or `mode`) and the host owns the state instead. Precedence is: `mode`, then `open`, then
+`urlState`, then the stored value, then `defaultOpen`, then closed. While any of the first three
+is supplied nothing is read from or written to localStorage. With `open`, whether an open dock is
+expanded stays the dock's own state.
 
-To restore a conversation from a `?thread=<id>` link, point the engine at it:
+To restore a conversation without `urlState`, point the engine at it:
 
 ```tsx
 useEffect(() => {
@@ -122,28 +138,25 @@ Selecting the thread that is already open is a no-op while the panel holds turns
 click on the highlighted rail row cannot abort a live run; `startNewThread()` is how a panel is
 cleared.
 
-### Modes: `min`, `dock` and `full`
+### Modes: `min`, `dock` and `expanded`
 
-`CopilotDock` boots as a launcher pill (`min`), opens into a floating card (`dock`: 430 px wide by
-default, draggable between 320 and 720, `min(680px, 86vh)` tall, a bottom sheet under 640 px), and
-can be expanded into a page the host owns (`full`). `open` is simply `mode !== 'min'`; supply
-`mode` / `onModeChange` when the host has a route for full mode, and the header grows an Expand
-button. In full mode the dock renders nothing but keeps its state — the host page composes the
-same panel with the history rail beside it:
+`CopilotDock` boots as a launcher (`min`), opens into a floating card (`dock`: 430 px wide by
+default, draggable between 320 and 720, `min(720px, 100dvh - 40px)` tall, a bottom sheet under
+640 px), and expands in place (`expanded`): a centred modal sheet with the history rail beside the
+panel, full screen under 860 px. Expanding needs no host route and no host page; Escape, a click
+on the backdrop or _Back to dock_ returns to the card. `open` is simply `mode !== 'min'`, so a host
+that only tracks open/closed can keep using `open` / `onOpenChange`. Supply `mode` /
+`onModeChange` when the host wants to hold the whole state:
 
 ```tsx
-// App shell: the dock follows the route.
-<CopilotDock
-  mode={pathname === '/copilot' ? 'full' : mode}
-  onModeChange={(next) => (next === 'full' ? navigate('/copilot') : setMode(next))}
-/>
+const [mode, setMode] = useState<CopilotDockMode>('min')
 
-// /copilot page
-<div style={{ display: 'grid', gridTemplateColumns: '290px minmax(0, 1fr)' }}>
-  <HistoryRail />
-  <CopilotPanel layout='full' />
-</div>
+<CopilotDock mode={mode} onModeChange={setMode} />
 ```
+
+`full` remains for hosts built on v0.4, where a host page composes `CopilotPanel layout='full'`
+beside `HistoryRail`: in `full` the dock renders nothing but keeps its state. Expand no longer
+leads there — it opens `expanded` — so such a host can drop its page and route.
 
 In the dock, conversations live in a header popover (`ThreadsPopover`, rendered by `CopilotPanel`
 when `showThreads` is on). `HistoryRail` groups threads into Pinned · Today · Yesterday · This week
@@ -341,19 +354,24 @@ Every token below has a light default on `.nxcp-root`; a host sets what it has t
 `adapters.theme`. `surfaceMuted` and `shadow` are the v0.3 names for `surface2` and `elev3` and
 still apply.
 
-| Token                                                      | CSS variable                       | Used for                                              |
-| ---------------------------------------------------------- | ---------------------------------- | ----------------------------------------------------- |
-| `surface`, `surface2`, `surface3`                          | `--nxcp-surface(-2/-3)`            | the card, then the trace card / composer box, chips   |
-| `border`, `borderStrong`                                   | `--nxcp-border(-strong)`           | dividers; composer, popover and chip outlines         |
-| `text`, `textMuted`, `textTertiary`                        | `--nxcp-text(-muted/-tertiary)`    | body, secondary copy, timestamps and durations        |
-| `accent`, `accentText`, `accentSubtle`                     | `--nxcp-accent(-text/-subtle)`     | brand fills, text on brand, the NETIX.AI lane         |
-| `domainCafm`                                               | `--nxcp-domain-cafm`               | the CAFM AI lane on agent cards                       |
-| `danger`, `success`, `warning`                             | `--nxcp-danger/-success/-warning`  | status glyphs, chips and banners                      |
-| `radius`, `radiusSm`, `radiusMd`, `radiusLg`, `radiusPill` | `--nxcp-radius(-sm/-md/-lg/-pill)` | card, controls, rows, cards, chips                    |
-| `elev1`, `elev2`, `elev3`                                  | `--nxcp-elev-1/2/3`                | elevation scale (dark hosts pass inset borders)       |
-| `focusRing`                                                | `--nxcp-focus-ring`                | keyboard focus                                        |
-| `motionFast`, `motionBase`                                 | `--nxcp-motion-fast/-base`         | transitions; all animation stops under reduced motion |
-| `fontFamily`, `monoFontFamily`                             | `--nxcp-font`, `--nxcp-mono`       | body and the mono durations / argument summaries      |
+A host on the shadcn / NETIX variable set (`--card`, `--muted`, `--primary`, `--border`, …) needs
+no theme code: `theme: hostVariableTheme()` maps every token to a live `var()` reference with this
+package's value as the fallback, so presets and dark mode restyle the dock with no re-read and no
+re-render. `hostVariableTheme({ domainCafm: 'var(--brand-cafm)' })` overrides single tokens.
+
+| Token                                                                  | CSS variable                           | Used for                                               |
+| ---------------------------------------------------------------------- | -------------------------------------- | ------------------------------------------------------ |
+| `surface`, `surface2`, `surface3`                                      | `--nxcp-surface(-2/-3)`                | the card, then the trace card / composer box, chips    |
+| `border`, `borderStrong`                                               | `--nxcp-border(-strong)`               | dividers; composer, popover and chip outlines          |
+| `text`, `textMuted`, `textTertiary`                                    | `--nxcp-text(-muted/-tertiary)`        | body, secondary copy, timestamps and durations         |
+| `accent`, `accentText`, `accentSubtle`                                 | `--nxcp-accent(-text/-subtle)`         | brand fills, text on brand, the NETIX.AI lane          |
+| `domainCafm`                                                           | `--nxcp-domain-cafm`                   | the CAFM AI lane on agent cards                        |
+| `danger`, `success`, `warning`                                         | `--nxcp-danger/-success/-warning`      | status glyphs, chips and banners                       |
+| `radius`, `radiusSm`, `radiusMd`, `radiusLg`, `radiusXl`, `radiusPill` | `--nxcp-radius(-sm/-md/-lg/-xl/-pill)` | card, controls, rows, cards, the dock and sheet, chips |
+| `elev1`, `elev2`, `elev3`                                              | `--nxcp-elev-1/2/3`                    | elevation scale (dark hosts pass inset borders)        |
+| `focusRing`                                                            | `--nxcp-focus-ring`                    | keyboard focus                                         |
+| `motionFast`, `motionBase`                                             | `--nxcp-motion-fast/-base`             | transitions; all animation stops under reduced motion  |
+| `fontFamily`, `monoFontFamily`                                         | `--nxcp-font`, `--nxcp-mono`           | body and the mono durations / argument summaries       |
 
 The stylesheet uses logical properties only, so an RTL host renders correctly without overrides.
 

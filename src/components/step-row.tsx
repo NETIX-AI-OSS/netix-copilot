@@ -9,6 +9,13 @@ import { formatDuration, toolLabel } from './trace-labels'
 
 const RAW_OUTPUT_CAP = 4000
 
+// A summary that is really a JSON dump reads as noise on a one-line row; the raw toggle has it.
+function readableSummary(summary: string | undefined): string | undefined {
+  const trimmed = summary?.trim()
+  if (!trimmed || /^[[{]/.test(trimmed)) return undefined
+  return trimmed
+}
+
 function rawText(output: JsonValue): string {
   const text = typeof output === 'string' ? output : JSON.stringify(output, null, 2)
   return text.length > RAW_OUTPUT_CAP ? `${text.slice(0, RAW_OUTPUT_CAP)}…` : text
@@ -32,6 +39,7 @@ export function StepRow({ step, nowMs, children }: StepRowProps): ReactNode {
   const expandable = step.detail !== undefined || step.output !== undefined
   const label = step.tool === undefined ? step.title : toolLabel(t, labels, step.tool, step.status)
   const elapsed = stepElapsedMs(step, nowMs)
+  const summary = readableSummary(step.argsSummary)
   const expiresIn =
     step.status === 'awaiting_approval' && step.expiresAt !== undefined && nowMs !== undefined
       ? Math.max(0, Math.ceil((step.expiresAt - nowMs) / 1000))
@@ -45,7 +53,7 @@ export function StepRow({ step, nowMs, children }: StepRowProps): ReactNode {
         size={11}
       />
       <span className='nxcp-row-label'>{label}</span>
-      {step.argsSummary ? <span className='nxcp-row-args'>{step.argsSummary}</span> : null}
+      {summary ? <span className='nxcp-row-args'>{summary}</span> : null}
       {expiresIn === undefined ? null : (
         <span className='nxcp-row-expires'>
           {t('copilot.trace.expiresIn', { seconds: expiresIn })}

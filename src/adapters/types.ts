@@ -94,6 +94,8 @@ export interface CopilotThemeTokens {
   radiusSm?: string
   radiusMd?: string
   radiusLg?: string
+  // The dock, the expanded sheet and the disclaimer card (18 px by default).
+  radiusXl?: string
   radiusPill?: string
   fontFamily?: string
   monoFontFamily?: string

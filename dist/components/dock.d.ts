@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
+import { type CopilotUrlState } from '../adapters/url';
 import { type CopilotPanelProps } from './panel';
-export type CopilotDockMode = 'min' | 'dock' | 'full';
+export type CopilotDockMode = 'min' | 'dock' | 'expanded' | 'full';
 export interface CopilotDockProps extends Omit<CopilotPanelProps, 'className' | 'layout'> {
     open?: boolean;
     onOpenChange?: (open: boolean) => void;
@@ -9,5 +10,6 @@ export interface CopilotDockProps extends Omit<CopilotPanelProps, 'className' | 
     container?: HTMLElement | null;
     mode?: CopilotDockMode;
     onModeChange?: (mode: CopilotDockMode) => void;
+    urlState?: CopilotUrlState;
 }
-export declare function CopilotDock({ open: openProp, onOpenChange, defaultOpen, showLauncher, container, mode: modeProp, onModeChange, headerActions, showThreads, ...panelProps }: CopilotDockProps): ReactNode;
+export declare function CopilotDock({ open: openProp, onOpenChange, defaultOpen, showLauncher, container, mode: modeProp, onModeChange, urlState, headerActions, showThreads, ...panelProps }: CopilotDockProps): ReactNode;
