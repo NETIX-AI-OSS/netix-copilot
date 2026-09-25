@@ -2,7 +2,13 @@ import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
-import { useCopilotAdapters, useCopilotEnabled, useCopilotEngine } from '../adapters/context'
+import {
+  useCopilotAdapters,
+  useCopilotEnabled,
+  useCopilotEngine,
+  useCopilotState,
+} from '../adapters/context'
+import { COPILOT_URL_PARAMS, type CopilotUrlState, isUrlOpen, readUrlThread } from '../adapters/url'
 import { injectCopilotStyles } from '../ui/styles'
 import { themeToCssVars } from '../ui/theme'
 import { HistoryRail } from './history-rail'
@@ -53,6 +59,10 @@ export interface CopilotDockProps extends Omit<CopilotPanelProps, 'className' | 
   // host page places CopilotPanel and HistoryRail itself and hands the mode back here.
   mode?: CopilotDockMode
   onModeChange?: (mode: CopilotDockMode) => void
+  // The host's URL (see `CopilotUrlState`). With it the dock opens from `?ai_open=1`, restores
+  // `?thread=<id>`, writes the flag when opened and clears both when closed, and stays open across
+  // navigation once opened. `mode` and `open` still win when supplied.
+  urlState?: CopilotUrlState
 }
 
 export function CopilotDock({
@@ -63,29 +73,61 @@ export function CopilotDock({
   container,
   mode: modeProp,
   onModeChange,
+  urlState,
   headerActions,
   showThreads = true,
   ...panelProps
 }: CopilotDockProps): ReactNode {
   const { t, theme } = useCopilotAdapters()
   const engine = useCopilotEngine()
+  const { threadId } = useCopilotState()
   const enabled = useCopilotEnabled()
-  const controlled = openProp !== undefined || modeProp !== undefined
+  // The URL is the source of the open state when a host passes it, so storage is not consulted.
+  const controlled = openProp !== undefined || modeProp !== undefined || urlState !== undefined
   const [localMode, setLocalMode] = useState<CopilotDockMode>(() => {
+    if (urlState !== undefined) return 'min'
     const stored = readStored(OPEN_STORAGE_KEY)
     const open = stored === null ? (defaultOpen ?? false) : stored === 'true'
     return open ? 'dock' : 'min'
   })
-  const mode: CopilotDockMode =
-    modeProp ?? (openProp === undefined ? localMode : openProp ? 'dock' : 'min')
+  const urlOpen = urlState !== undefined && isUrlOpen(urlState)
+  const urlThread = urlState === undefined ? undefined : readUrlThread(urlState)
+  let mode: CopilotDockMode
+  if (modeProp !== undefined) mode = modeProp
+  // `open` says open or closed; whether an open dock is expanded stays the dock's own state.
+  else if (openProp !== undefined)
+    mode = !openProp ? 'min' : localMode === 'expanded' ? 'expanded' : 'dock'
+  else if (urlOpen && localMode === 'min') mode = 'dock'
+  else mode = localMode
   const setMode = useCallback(
     (next: CopilotDockMode) => {
       if (modeProp === undefined) setLocalMode(next)
+      const nextOpen = next !== 'min'
+      if (urlState !== undefined && nextOpen !== urlOpen) {
+        urlState.set(
+          nextOpen
+            ? { [COPILOT_URL_PARAMS.open]: '1' }
+            : { [COPILOT_URL_PARAMS.open]: null, [COPILOT_URL_PARAMS.thread]: null },
+        )
+      }
       onModeChange?.(next)
-      if ((next !== 'min') !== (mode !== 'min')) onOpenChange?.(next !== 'min')
+      if (nextOpen !== (mode !== 'min')) onOpenChange?.(nextOpen)
     },
-    [modeProp, mode, onModeChange, onOpenChange],
+    [modeProp, mode, onModeChange, onOpenChange, urlOpen, urlState],
   )
+  // A `?thread=` link restores that conversation once the dock is open; closing drops the link, so
+  // a later link to the same thread restores it again. The thread already open is never
+  // re-selected, which would abort a live run.
+  const restoredThread = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (urlThread === undefined) {
+      restoredThread.current = undefined
+      return
+    }
+    if (mode === 'min' || restoredThread.current === urlThread) return
+    restoredThread.current = urlThread
+    if (threadId !== urlThread) engine.selectThread(urlThread)
+  }, [engine, mode, threadId, urlThread])
   const [width, setWidth] = useState(() => {
     const stored = Number(readStored(WIDTH_STORAGE_KEY))
     return Number.isFinite(stored) && stored > 0 ? clampWidth(stored) : DEFAULT_WIDTH

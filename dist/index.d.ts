@@ -2,6 +2,8 @@ export type { CopilotConfig, CopilotProviderProps, CopilotThreadActions } from '
 export { CopilotProvider, DEFAULT_COPILOT_PERMISSION, useCopilotAdapters, useCopilotConfig, useCopilotEnabled, useCopilotEngine, useCopilotModelTier, useCopilotRegenerate, useCopilotRun, useCopilotSend, useCopilotState, useCopilotThreadActions, } from './adapters/context';
 export type { CopilotAdapters, CopilotChartRenderContext, CopilotLabels, CopilotMarkdownRenderContext, CopilotNotification, CopilotPageContext, CopilotPrompt, CopilotPromptContext, CopilotPromptTransform, CopilotThemeTokens, CopilotUser, TranslateFn, } from './adapters/types';
 export { buildScope, resolveCopilotPrompt } from './adapters/types';
+export type { CopilotUrlState } from './adapters/url';
+export { COPILOT_URL_PARAMS, copilotDeepLink } from './adapters/url';
 export type { AgentCardProps } from './components/agent-card';
 export { AgentCard } from './components/agent-card';
 export type { AnswerActionsProps } from './components/answer-actions';
@@ -66,6 +68,6 @@ export { COPILOT_EVENT_NAMES, MODEL_TIERS, modelTierMetadata } from './types';
 export type { TranslateVars } from './ui/i18n';
 export { COPILOT_STRINGS, createFallbackTranslate, interpolate } from './ui/i18n';
 export { COPILOT_CSS, COPILOT_STYLE_ELEMENT_ID, injectCopilotStyles } from './ui/styles';
-export { themeToCssVars } from './ui/theme';
+export { hostVariableTheme, themeToCssVars } from './ui/theme';
 export type { CopilotZIndexLayer } from './ui/z-index';
 export { COPILOT_Z_INDEX, COPILOT_Z_INDEX_NOTES } from './ui/z-index';

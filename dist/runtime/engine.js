@@ -580,6 +580,13 @@ class CopilotEngine {
         this.clearSlowTimer();
         this.activeRestoredState = undefined;
         const threadId = this.snapshot.threadId;
+        // A conversation started here is missing from a list loaded earlier, so the rail would not
+        // show it (or mark it current) until a reload. Refetch once when its first run settles.
+        if (threadId !== undefined &&
+            this.snapshot.threadsLoaded &&
+            !this.snapshot.threads.some((thread) => thread.id === threadId)) {
+            void this.loadThreads();
+        }
         if (threadId === undefined || next.status === 'cancelled')
             return;
         const durationMs = next.executionMs ??

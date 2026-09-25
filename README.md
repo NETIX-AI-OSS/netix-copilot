@@ -85,31 +85,45 @@ function AppShell() {
 
 ### Opening the dock from the host
 
-`CopilotDock` is uncontrolled by default and remembers whether it was open. Supply `open` and the
-host owns the state instead — which is what a URL contract, a topbar button or a deep link needs.
+The simplest wiring is the URL. Pass `urlState` — two functions over the host router's search
+params — and the dock does the rest: `?ai_open=1` opens it, `&thread=<id>` restores that
+conversation once, opening writes the flag, closing clears both, and a dock the user opened stays
+open when navigation drops the flag. `copilotDeepLink(threadId?, path?)` builds such a link and
+`COPILOT_URL_PARAMS` names the params.
 
 ```tsx
-const [params, setParams] = useSearchParams()
-const open = params.get('ai_open') === '1'
+function useRouterCopilotUrl(): CopilotUrlState {
+  const [params, setParams] = useSearchParams()
+  return useMemo(
+    () => ({
+      get: (param) => params.get(param),
+      set: (changes) =>
+        setParams(
+          (current) => {
+            const next = new URLSearchParams(current)
+            for (const [key, value] of Object.entries(changes)) {
+              if (value === null) next.delete(key)
+              else next.set(key, value)
+            }
+            return next
+          },
+          { replace: true },
+        ),
+    }),
+    [params, setParams],
+  )
+}
 
-<CopilotDock
-  open={open}
-  onOpenChange={(next) => {
-    setParams((current) => {
-      if (next) current.set('ai_open', '1')
-      else current.delete('ai_open')
-      return current
-    })
-  }}
-  showLauncher={false}
-/>
+;<CopilotDock urlState={useRouterCopilotUrl()} />
 ```
 
-Precedence is: a supplied `open` prop, then the stored value, then `defaultOpen`, then closed.
-While `open` is supplied nothing is read from or written to localStorage, so the host's value is
-never overwritten by a stale one.
+Without `urlState`, `CopilotDock` is uncontrolled and remembers whether it was open. Supply `open`
+(or `mode`) and the host owns the state instead. Precedence is: `mode`, then `open`, then
+`urlState`, then the stored value, then `defaultOpen`, then closed. While any of the first three
+is supplied nothing is read from or written to localStorage. With `open`, whether an open dock is
+expanded stays the dock's own state.
 
-To restore a conversation from a `?thread=<id>` link, point the engine at it:
+To restore a conversation without `urlState`, point the engine at it:
 
 ```tsx
 useEffect(() => {
@@ -339,6 +353,11 @@ host-rendered turn the same notifier the SDK uses.
 Every token below has a light default on `.nxcp-root`; a host sets what it has through
 `adapters.theme`. `surfaceMuted` and `shadow` are the v0.3 names for `surface2` and `elev3` and
 still apply.
+
+A host on the shadcn / NETIX variable set (`--card`, `--muted`, `--primary`, `--border`, …) needs
+no theme code: `theme: hostVariableTheme()` maps every token to a live `var()` reference with this
+package's value as the fallback, so presets and dark mode restyle the dock with no re-read and no
+re-render. `hostVariableTheme({ domainCafm: 'var(--brand-cafm)' })` overrides single tokens.
 
 | Token                                                                  | CSS variable                           | Used for                                               |
 | ---------------------------------------------------------------------- | -------------------------------------- | ------------------------------------------------------ |

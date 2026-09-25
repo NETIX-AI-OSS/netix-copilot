@@ -1,9 +1,10 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { StrictMode, useEffect } from 'react'
+import { StrictMode, useEffect, useMemo, useSyncExternalStore } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { CopilotProvider, useCopilotEngine } from '../adapters/context'
 import type { CopilotAdapters } from '../adapters/types'
+import type { CopilotUrlState } from '../adapters/url'
 import type { CopilotDockProps } from '../components/dock'
 import { CopilotDock } from '../components/dock'
 import type { CopilotEngine } from '../runtime/engine'
@@ -556,5 +557,129 @@ describe('CopilotDock modes', () => {
     fireEvent.click(trigger)
     fireEvent.click(trigger)
     expect(screen.queryByRole('dialog')).toBeNull()
+  })
+})
+
+// The URL contract: `?ai_open=1` opens, `&thread=<id>` restores, closing clears both, and a dock
+// the user opened stays open when navigation drops the flag.
+describe('CopilotDock URL state', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    capturedEngine = undefined
+  })
+
+  // The host's router, reduced to one search string that the harness and the test both read.
+  const location = {
+    search: '',
+    listeners: new Set<() => void>(),
+    subscribe(listener: () => void) {
+      location.listeners.add(listener)
+      return () => location.listeners.delete(listener)
+    },
+    replace(next: string) {
+      location.search = next
+      for (const listener of location.listeners) listener()
+    },
+  }
+  const navigate = (next: string) => location.replace(next)
+
+  function UrlDock() {
+    const search = useSyncExternalStore(location.subscribe, () => location.search)
+    const urlState = useMemo<CopilotUrlState>(() => {
+      const params = new URLSearchParams(search)
+      return {
+        get: (param) => params.get(param),
+        set: (changes) => {
+          const next = new URLSearchParams(search)
+          for (const [key, value] of Object.entries(changes)) {
+            if (value === null) next.delete(key)
+            else next.set(key, value)
+          }
+          location.replace(next.toString())
+        },
+      }
+    }, [search])
+    return <CopilotDock urlState={urlState} showThreads={false} />
+  }
+
+  function renderUrlDock(initial: string) {
+    location.search = initial
+    const transport = new ScriptedTransport()
+    render(
+      <CopilotProvider
+        config={{ baseUrl: 'https://x' }}
+        adapters={testAdapters()}
+        transport={transport}
+      >
+        <EngineProbe />
+        <UrlDock />
+      </CopilotProvider>,
+    )
+  }
+
+  it('stays closed without the flag and ignores a stored open state', () => {
+    window.localStorage.setItem('netix-copilot.open', 'true')
+    renderUrlDock('tab=ppm')
+    expect(screen.queryByRole('complementary')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Ask Copilot' })).toBeTruthy()
+  })
+
+  it('writes the flag when opened, keeps other params, and clears the link when closed', () => {
+    renderUrlDock('tab=ppm')
+    fireEvent.click(screen.getByRole('button', { name: 'Ask Copilot' }))
+    expect(screen.getByRole('complementary', { name: 'Copilot assistant' })).toBeTruthy()
+    expect(location.search).toBe('tab=ppm&ai_open=1')
+
+    act(() => navigate('tab=ppm&ai_open=1&thread=55'))
+    fireEvent.click(screen.getByRole('button', { name: 'Close copilot' }))
+    expect(location.search).toBe('tab=ppm')
+    expect(screen.queryByRole('complementary')).toBeNull()
+  })
+
+  it('stays open once opened when navigation drops the flag', () => {
+    renderUrlDock('')
+    fireEvent.click(screen.getByRole('button', { name: 'Ask Copilot' }))
+    act(() => navigate('page=2'))
+    expect(screen.getByRole('complementary', { name: 'Copilot assistant' })).toBeTruthy()
+  })
+
+  it('opens on a thread link and restores that thread once, without a blank id counting', () => {
+    renderUrlDock('thread=')
+    expect(screen.queryByRole('complementary')).toBeNull()
+    act(() => navigate(''))
+
+    const select = vi.spyOn(capturedEngine as CopilotEngine, 'selectThread')
+    act(() => navigate('thread=55'))
+    expect(screen.getByRole('complementary', { name: 'Copilot assistant' })).toBeTruthy()
+    expect(select).toHaveBeenCalledTimes(1)
+    expect(select).toHaveBeenCalledWith('55')
+    // A re-render on the same link does not select it again.
+    act(() => navigate('thread=55&x=1'))
+    expect(select).toHaveBeenCalledTimes(1)
+  })
+
+  it('expands while the URL keeps the dock open', () => {
+    renderUrlDock('ai_open=1')
+    fireEvent.click(screen.getByRole('button', { name: 'Expand' }))
+    expect(screen.getByRole('dialog', { name: 'Copilot assistant' })).toBeTruthy()
+    expect(location.search).toBe('ai_open=1')
+  })
+})
+
+describe('CopilotDock with a controlled open prop', () => {
+  it('can still expand: open says open or closed, expanded stays the dock state', () => {
+    const onOpenChange = vi.fn()
+    render(
+      <CopilotProvider
+        config={{ baseUrl: 'https://x' }}
+        adapters={testAdapters()}
+        transport={new ScriptedTransport()}
+      >
+        <CopilotDock open onOpenChange={onOpenChange} showThreads={false} />
+      </CopilotProvider>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Expand' }))
+    expect(screen.getByRole('dialog', { name: 'Copilot assistant' })).toBeTruthy()
+    expect(onOpenChange).not.toHaveBeenCalled()
   })
 })

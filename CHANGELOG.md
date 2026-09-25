@@ -62,6 +62,22 @@ Behaviour and DOM a host may depend on. No export was removed.
   it and shows a context bar; without it the meter shows a plain usage glyph and no percentage.
 - `radiusXl` theme token (`--nxcp-radius-xl`, 18 px) for the dock, the expanded sheet and the
   disclaimer card.
+- **`CopilotDock` `urlState`** (`CopilotUrlState`: `get(param)` / `set(changes)` over the host's
+  search params): `?ai_open=1` opens the dock, `&thread=<id>` restores that conversation once,
+  opening writes the flag, closing clears both, and a dock the user opened stays open across
+  navigation. With `COPILOT_URL_PARAMS` and `copilotDeepLink(threadId?, path?)`. Replaces the
+  open/close, deep-link and thread-restore code each host wrote itself.
+- **`hostVariableTheme(overrides?)`**: a theme of live `var()` references to the shadcn / NETIX
+  variables (`--card`, `--muted`, `--primary`, …), each with the package default as fallback, so
+  presets and dark mode restyle the dock with no host code. Replaces reading computed colours in
+  JS and re-reading them on every theme change.
+
+### Fixed
+
+- A dock whose `open` prop the host controls can now expand; `open` used to force `'dock'`.
+- The history rail shows a conversation started in this session without a reload: the engine
+  refetches a loaded thread list once when a new thread's first run settles (hosts no longer need
+  their own refresh hook).
 
 ### Migration (viz-ui, the one v0.4 host using `full`)
 
@@ -69,7 +85,10 @@ Behaviour and DOM a host may depend on. No export was removed.
    `onModeChange` straight through.
 2. Remove the `/copilot` page; keep a redirect from ml-engine briefing links
    (`/copilot/threads/<id>`) to the dock deep link (`?ai_open=1&thread=<id>`).
-3. Update tests for Close (not Minimise), the tier `button`/`radio`s, and usage behind the meter.
+3. Pass `urlState` instead of wiring `ai_open` / `thread` and thread restore by hand, use
+   `theme: hostVariableTheme()` instead of reading CSS colours, and drop any thread-list refresh
+   hook.
+4. Update tests for Close (not Minimise), the tier `button`/`radio`s, and usage behind the meter.
 
 ## [0.4.2] — 2026-09-12
 
