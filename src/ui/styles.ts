@@ -301,17 +301,6 @@ const SHELL_CSS = `
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.nxcp-mark {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 7px;
-  background: var(--nxcp-accent);
-  color: var(--nxcp-accent-text);
-}
 .nxcp-caption {
   min-width: 0;
   overflow: hidden;

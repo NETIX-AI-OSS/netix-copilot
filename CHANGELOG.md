@@ -5,40 +5,71 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-09-25
+
+A redesign of every surface toward current coding-agent UIs, and an in-package large view so a
+host no longer needs its own copilot page. The engine, transport and wire contract are unchanged.
+
+### Breaking
+
+Behaviour and DOM a host may depend on. No export was removed.
+
+- **Expand opens the new `expanded` mode, not `full`.** The Expand button is always offered (it no
+  longer waits for an `onModeChange` prop), and `onModeChange` reports `'expanded'`. A v0.4 host
+  that navigated to its own page on `'full'` stops doing so; drop the page, or keep it and pass
+  `mode='full'` yourself. `CopilotDockMode` is now `'min' | 'dock' | 'expanded' | 'full'`, and
+  `dock_opened` lifecycle events can report `mode: 'expanded'`.
+- **The dock header has no Minimise button.** It did exactly what Close does; tests that query
+  `Minimise` should use the close label (`copilot.dock.close`).
+- **The composer's tier control is a button and popover, not a `<select>`.** The pill is a
+  `button` named `"{copilot.tier.label}: {tier}"`; the tiers are `role="radio"` items in a
+  `dialog` named `copilot.tier.label`. Queries for `combobox` / `option` must change.
+  `ModelTierSelector` (the `<select>`) is still exported but no longer used by `Composer`.
+- **Run usage moved off the page into a popover.** `CopilotPanel` no longer renders
+  `UsageFooter`; tokens, calls, cost, credits and the transport dot open from `UsageMeter`, the
+  button beside Send (shown only after a turn). `UsageFooter` is still exported.
+- **Composer text moved.** The disclaimer shows once, above the composer, until the first turn;
+  the keyboard hint (`copilot.composer.hint`) is no longer rendered; `footerActions` render on one
+  line under the composer instead of a bordered footer.
+- **No title icon and no avatar/name row.** The header shows only the title; an answer shows
+  status chips only when there is one to show (a non-Base tier, failed, cancelled), and its time
+  moves to the answer strip.
+
 ### Changed
 
-- **New visual design across every surface**, closer to current coding-agent UIs:
-  - Launcher: smaller, no looping halo, a bigger mark, a continuous quiet sheen instead, and a
-    glow-on-hover / press-to-scale feel instead of a lift.
-  - Header: ghost icon buttons, no border under it, a New chat control that waits for the first
-    turn, no title icon, the Minimise button dropped (it did exactly what Close does).
-  - Transcript: the user bubble is muted instead of the brand fill; no avatar/name row above an
-    answer (status chips only when they say something, the time moves to the answer strip); the
-    reasoning trace is an inline shimmering status line with a timeline body; a step's argument
-    summary hides when it is a JSON dump rather than a phrase.
-  - Composer: the text box sits on its own line; a press anywhere on the card (not on a control)
-    focuses it, caret at the end; a round icon Send/Stop; the disclaimer is a small card above the
-    composer shown only before the first turn; host footer content (e.g. "Powered by …") is one
-    quiet line under the card.
-  - The response tier and the run's usage are two small popovers instead of one crowded footer:
-    `TierMenu` is a plain tier picker; `UsageMeter` is a ring beside Send that fills against the
-    model's context window when the backend reports one (`CopilotUsage.contextWindow`, read from
-    `context_window` on the wire) — hidden entirely otherwise, never a ring with nothing to show —
-    and opens a popover with the last reply's tokens, calls, cost, credits and connection.
-  - Suggestions are a list of rows with a reveal-on-hover arrow; the transcript fades at both
-    edges instead of stopping at a rule.
-  - History rail: single-line rows (hover reveals the row menu in place of the timestamp), an
-    active-row tint instead of a border, chips only for a non-default tier or surface.
-- **Expand opens an in-package `expanded` mode** — a modal sheet with the history rail beside the
-  panel, its background reading the host's card colour through a blur — instead of asking the
-  host to navigate to its own page. `CopilotDockMode` gains `'expanded'`; `'full'` still works for
-  v0.4 hosts. `CopilotPanel` accepts `layout='expanded'`.
+- Launcher: a bigger mark, no looping halo, a continuous quiet sheen, a glow on hover instead of a
+  lift, and a small scale on press.
+- Header and transcript: ghost icon buttons, no rule under the header (the transcript fades at
+  both edges instead), a muted user bubble instead of the brand fill, the reasoning trace as an
+  inline status line with a shimmering label and a timeline body; a step's argument summary is
+  hidden when it is a JSON dump (the raw toggle still has it).
+- Composer: a press anywhere on the card that is not a control focuses the text box with the
+  caret at the end; a round icon Send/Stop; the disclaimer is a small card with an info mark.
+- History rail: single-line rows (the row menu replaces the time on hover), an active-row tint,
+  and chips only for a non-default tier or surface.
+- Suggestions are rows with a reveal-on-hover arrow instead of pills.
+- New chat waits for the first turn (disabled on an empty conversation).
 
 ### Added
 
-- `TierMenu` and `UsageMeter`, the composer's two small popovers.
-- `CopilotUsage.contextWindow`, decoded from `context_window` / `max_context_tokens` on the SSE
-  usage event and from `usage.context_window` on a stored turn.
+- `expanded` dock mode: a centred modal sheet with `HistoryRail` beside the panel, over a blurred
+  backdrop; Escape, the backdrop or _Back to dock_ return to the card; full screen under 860 px,
+  where the threads popover returns. `CopilotPanel` accepts `layout='expanded'`.
+- `TierMenu` and `UsageMeter`, the composer's two popovers, exported for hosts composing their
+  own composer.
+- `CopilotUsage.contextWindow`, decoded from `context_window` (or `max_context_tokens`) on the SSE
+  usage event and from `usage.context_window` on a stored turn. `UsageMeter` fills a ring against
+  it and shows a context bar; without it the meter shows a plain usage glyph and no percentage.
+- `radiusXl` theme token (`--nxcp-radius-xl`, 18 px) for the dock, the expanded sheet and the
+  disclaimer card.
+
+### Migration (viz-ui, the one v0.4 host using `full`)
+
+1. Stop mapping `'full'` to a route: track `'expanded'` as local state and pass `mode` /
+   `onModeChange` straight through.
+2. Remove the `/copilot` page; keep a redirect from ml-engine briefing links
+   (`/copilot/threads/<id>`) to the dock deep link (`?ai_open=1&thread=<id>`).
+3. Update tests for Close (not Minimise), the tier `button`/`radio`s, and usage behind the meter.
 
 ## [0.4.2] — 2026-09-12
 

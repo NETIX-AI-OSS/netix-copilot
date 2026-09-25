@@ -241,6 +241,11 @@ describe('theme tokens', () => {
     expect(style.colorScheme).toBe('dark')
   })
 
+  it('maps the large radius the dock and the expanded sheet use', () => {
+    const style = themeToCssVars({ radiusXl: '20px' }) as Record<string, string>
+    expect(style['--nxcp-radius-xl']).toBe('20px')
+  })
+
   it('skips tokens the host did not set', () => {
     expect(Object.keys(themeToCssVars({}))).toEqual([])
   })

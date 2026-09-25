@@ -1,10 +1,12 @@
 # netix-copilot
 
-Version 0.4.0 is the assistant redesign: a floating dock with a launcher pill, a `min` · `dock` ·
-`full` mode machine, a grouped history rail, artifact cards, and a **reasoning trace** that shows
-the run plan, the specialist sub-agents and their tool calls as they happen. Every v0.3.0 export,
-prop and host-facing class name is preserved, and a backend that predates the new events still
-renders correctly.
+Version 0.5.0 is a redesign toward current coding-agent UIs — a quieter dock, an inline reasoning
+trace, a composer with tier and usage popovers — and adds an in-package **`expanded`** mode, so a
+host gets a large view with the history rail without a page or route of its own. The engine,
+transport and wire contract are unchanged from 0.4; see the CHANGELOG for the host-facing
+behaviour changes. Version 0.4.0 introduced the assistant design: the `min` · `dock` mode machine,
+a grouped history rail, artifact cards and a **reasoning trace** that shows the run plan, the
+specialist sub-agents and their tool calls as they happen.
 
 ```tsx
 <CopilotProvider config={{ ...config, conversationSurface: 'embed' }} adapters={adapters}>
@@ -26,13 +28,13 @@ neither SWR nor react-query, bundles no chart library, and imports no stylesheet
 ## Install
 
 ```bash
-pnpm add github:NETIX-AI-OSS/netix-copilot#v0.4.2
+pnpm add github:NETIX-AI-OSS/netix-copilot#v0.5.0
 ```
 
 ```jsonc
 // package.json
 "dependencies": {
-  "netix-copilot": "github:NETIX-AI-OSS/netix-copilot#v0.4.2"
+  "netix-copilot": "github:NETIX-AI-OSS/netix-copilot#v0.5.0"
 }
 ```
 
@@ -338,19 +340,19 @@ Every token below has a light default on `.nxcp-root`; a host sets what it has t
 `adapters.theme`. `surfaceMuted` and `shadow` are the v0.3 names for `surface2` and `elev3` and
 still apply.
 
-| Token                                                      | CSS variable                       | Used for                                              |
-| ---------------------------------------------------------- | ---------------------------------- | ----------------------------------------------------- |
-| `surface`, `surface2`, `surface3`                          | `--nxcp-surface(-2/-3)`            | the card, then the trace card / composer box, chips   |
-| `border`, `borderStrong`                                   | `--nxcp-border(-strong)`           | dividers; composer, popover and chip outlines         |
-| `text`, `textMuted`, `textTertiary`                        | `--nxcp-text(-muted/-tertiary)`    | body, secondary copy, timestamps and durations        |
-| `accent`, `accentText`, `accentSubtle`                     | `--nxcp-accent(-text/-subtle)`     | brand fills, text on brand, the NETIX.AI lane         |
-| `domainCafm`                                               | `--nxcp-domain-cafm`               | the CAFM AI lane on agent cards                       |
-| `danger`, `success`, `warning`                             | `--nxcp-danger/-success/-warning`  | status glyphs, chips and banners                      |
-| `radius`, `radiusSm`, `radiusMd`, `radiusLg`, `radiusPill` | `--nxcp-radius(-sm/-md/-lg/-pill)` | card, controls, rows, cards, chips                    |
-| `elev1`, `elev2`, `elev3`                                  | `--nxcp-elev-1/2/3`                | elevation scale (dark hosts pass inset borders)       |
-| `focusRing`                                                | `--nxcp-focus-ring`                | keyboard focus                                        |
-| `motionFast`, `motionBase`                                 | `--nxcp-motion-fast/-base`         | transitions; all animation stops under reduced motion |
-| `fontFamily`, `monoFontFamily`                             | `--nxcp-font`, `--nxcp-mono`       | body and the mono durations / argument summaries      |
+| Token                                                                  | CSS variable                           | Used for                                               |
+| ---------------------------------------------------------------------- | -------------------------------------- | ------------------------------------------------------ |
+| `surface`, `surface2`, `surface3`                                      | `--nxcp-surface(-2/-3)`                | the card, then the trace card / composer box, chips    |
+| `border`, `borderStrong`                                               | `--nxcp-border(-strong)`               | dividers; composer, popover and chip outlines          |
+| `text`, `textMuted`, `textTertiary`                                    | `--nxcp-text(-muted/-tertiary)`        | body, secondary copy, timestamps and durations         |
+| `accent`, `accentText`, `accentSubtle`                                 | `--nxcp-accent(-text/-subtle)`         | brand fills, text on brand, the NETIX.AI lane          |
+| `domainCafm`                                                           | `--nxcp-domain-cafm`                   | the CAFM AI lane on agent cards                        |
+| `danger`, `success`, `warning`                                         | `--nxcp-danger/-success/-warning`      | status glyphs, chips and banners                       |
+| `radius`, `radiusSm`, `radiusMd`, `radiusLg`, `radiusXl`, `radiusPill` | `--nxcp-radius(-sm/-md/-lg/-xl/-pill)` | card, controls, rows, cards, the dock and sheet, chips |
+| `elev1`, `elev2`, `elev3`                                              | `--nxcp-elev-1/2/3`                    | elevation scale (dark hosts pass inset borders)        |
+| `focusRing`                                                            | `--nxcp-focus-ring`                    | keyboard focus                                         |
+| `motionFast`, `motionBase`                                             | `--nxcp-motion-fast/-base`             | transitions; all animation stops under reduced motion  |
+| `fontFamily`, `monoFontFamily`                                         | `--nxcp-font`, `--nxcp-mono`           | body and the mono durations / argument summaries       |
 
 The stylesheet uses logical properties only, so an RTL host renders correctly without overrides.
 

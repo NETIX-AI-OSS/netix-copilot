@@ -73,6 +73,9 @@ export function CopilotPanel({
         <span className='nxcp-title'>
           <span className='nxcp-title-text'>{title ?? t('copilot.dock.title')}</span>
         </span>
+        {layout === 'full' ? (
+          <span className='nxcp-caption'>{t('copilot.dock.caption')}</span>
+        ) : null}
         <span className='nxcp-header-actions'>
           {showThreads && layout !== 'full' ? <ThreadsPopover /> : null}
           <button

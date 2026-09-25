@@ -23,6 +23,7 @@ const TOKEN_TO_VARIABLE: Record<keyof Omit<CopilotThemeTokens, 'colorScheme'>, s
   radiusSm: '--nxcp-radius-sm',
   radiusMd: '--nxcp-radius-md',
   radiusLg: '--nxcp-radius-lg',
+  radiusXl: '--nxcp-radius-xl',
   radiusPill: '--nxcp-radius-pill',
   fontFamily: '--nxcp-font',
   monoFontFamily: '--nxcp-mono',
