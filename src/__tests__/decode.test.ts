@@ -197,6 +197,13 @@ describe('decodeFrame', () => {
     expect(out?.event).toEqual({ type: 'usage', usage: { tokensIn: 10, tokensOut: 4 } })
   })
 
+  it('decodes a reported context window and ignores a zero one', () => {
+    const out = decodeFrame(frame('usage', { prompt_tokens: 10, context_window: 200000 }))
+    expect(out?.event).toEqual({ type: 'usage', usage: { tokensIn: 10, contextWindow: 200000 } })
+    const none = decodeFrame(frame('usage', { prompt_tokens: 10, context_window: 0 }))
+    expect(none?.event).toEqual({ type: 'usage', usage: { tokensIn: 10 } })
+  })
+
   it('decodes the calls, cost and credit balance ml-engine puts inside usage', () => {
     const out = decodeFrame(
       frame('usage', {

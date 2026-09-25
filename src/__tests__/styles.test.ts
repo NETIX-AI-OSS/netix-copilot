@@ -29,12 +29,10 @@ describe('COPILOT_CSS', () => {
         '  display: inline-flex;\n' +
         '  align-items: center;\n' +
         '  justify-content: center;\n' +
-        '  width: 34px;\n' +
-        '  height: 34px;\n' +
-        '  border-radius: 11px;\n' +
-        '  background: var(--nxcp-accent-text);\n' +
-        '  color: var(--nxcp-accent);\n' +
-        '  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--nxcp-accent) 18%, transparent);',
+        '  width: 36px;\n' +
+        '  height: 36px;\n' +
+        '  border-radius: 50%;\n' +
+        '  color: var(--nxcp-accent-text);',
     )
   })
 

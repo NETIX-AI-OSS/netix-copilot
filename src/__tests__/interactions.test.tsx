@@ -113,17 +113,15 @@ describe('compact model tier picker', () => {
     window.localStorage.clear()
   })
 
-  it('offers friendly tier labels through one keyboard-native control', () => {
+  it('offers friendly tier labels in the menu and names the choice on the pill', () => {
     mountDock(new DecisionTransport())
-    const picker = screen.getByRole('combobox', {
-      name: 'Response quality',
-    }) as HTMLSelectElement
-    expect(picker.value).toBe('base')
-    expect(screen.getByRole('option', { name: 'Base 1x' })).toBeTruthy()
-    expect(screen.getByRole('option', { name: 'High 5x' })).toBeTruthy()
-    expect(screen.getByRole('option', { name: 'Max 20x' })).toBeTruthy()
-    fireEvent.change(picker, { target: { value: 'high' } })
-    expect(picker.value).toBe('high')
+    fireEvent.click(screen.getByRole('button', { name: 'Response quality: Base 1x' }))
+    expect(screen.getByRole('radio', { name: 'Base 1x' }).getAttribute('aria-checked')).toBe('true')
+    expect(screen.getByRole('radio', { name: 'Max 20x' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('radio', { name: 'High 5x' }))
+    // Choosing closes the menu; the pill now names the new tier.
+    expect(screen.queryByRole('dialog', { name: 'Response quality' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Response quality: High 5x' })).toBeTruthy()
   })
 
   it('locks the compact picker after the first successful create', async () => {
@@ -133,11 +131,11 @@ describe('compact model tier picker', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: 'Send' }))
     await waitFor(() => {
-      const picker = screen.getByRole('combobox', {
-        name: 'Response quality',
-      }) as HTMLSelectElement
-      expect(picker.disabled).toBe(true)
+      expect(screen.getByRole('button', { name: /^Response quality/ }).dataset.locked).toBe('true')
     })
+    fireEvent.click(screen.getByRole('button', { name: /^Response quality/ }))
+    expect(screen.getByRole('radio', { name: 'High 5x' }).hasAttribute('disabled')).toBe(true)
+    expect(screen.getByText('Locked for this conversation')).toBeTruthy()
   })
 })
 

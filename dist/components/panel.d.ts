@@ -9,7 +9,7 @@ export interface CopilotPanelProps {
     showThreads?: boolean;
     autoFocus?: boolean;
     className?: string;
-    layout?: 'dock' | 'full';
+    layout?: 'dock' | 'expanded' | 'full';
     renderTurn?: (turn: CopilotTurnView, defaultView: ReactNode) => ReactNode;
 }
 export declare function CopilotPanel({ title, headerActions, footerActions, emptyState, quickPrompts, showThreads, autoFocus, className, layout, renderTurn, }: CopilotPanelProps): ReactNode;

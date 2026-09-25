@@ -28,7 +28,7 @@ class ThreadTransport implements CopilotTransport {
   threads: CopilotThread[] = [
     thread({ id: 'today', title: 'Today thread', updatedAt: NOW - 2 * HOUR, modelTier: 'high' }),
     thread({ id: 'yesterday', title: 'Yesterday thread', updatedAt: NOW - 26 * HOUR }),
-    thread({ id: 'week', title: 'Week thread', updatedAt: NOW - 3 * DAY, surface: 'web' }),
+    thread({ id: 'week', title: 'Week thread', updatedAt: NOW - 3 * DAY, surface: 'mobile' }),
     thread({ id: 'earlier', title: 'Earlier thread', updatedAt: NOW - 20 * DAY, surface: 'kiosk' }),
     thread({ id: 'pinned', title: 'Pinned thread', updatedAt: NOW - 40 * DAY, isPinned: true }),
     thread({
@@ -176,11 +176,26 @@ describe('HistoryRail', () => {
     )
   })
 
-  it('shows the tier and surface as small chips', async () => {
-    mount(new ThreadTransport())
+  it('shows a non-default tier and surface as small chips', async () => {
+    const transport = new ThreadTransport()
+    transport.threads.push(
+      thread({
+        id: 'plain',
+        title: 'Plain thread',
+        updatedAt: NOW - 3 * DAY,
+        surface: 'web',
+        modelTier: 'base',
+      }),
+    )
+    mount(transport)
     await screen.findByText('Today thread')
     expect(screen.getByText('High 5x').className).toBe('nxcp-badge')
-    expect(screen.getByText('Web').className).toBe('nxcp-badge')
+    expect(screen.getByText('Mobile').className).toBe('nxcp-badge')
+    // The defaults (Base tier, the web surface) draw nothing.
+    expect(screen.queryByText('Web')).toBeNull()
+    expect(
+      screen.getByText('Plain thread').closest('.nxcp-thread')?.querySelector('.nxcp-badge'),
+    ).toBeNull()
     expect(screen.queryByText('Base 1x')).toBeNull()
     // The raw wire value never prints, and a surface the SDK does not know draws no badge.
     expect(screen.queryByText('web')).toBeNull()
@@ -191,10 +206,10 @@ describe('HistoryRail', () => {
   })
 
   it('names the surface through the translate adapter', async () => {
-    const t = createFallbackTranslate({ 'copilot.surface.web': 'Browser' })
+    const t = createFallbackTranslate({ 'copilot.surface.mobile': 'Phone' })
     mount(new ThreadTransport(), {}, { t })
     await screen.findByText('Today thread')
-    expect(screen.getByText('Browser').className).toBe('nxcp-badge')
+    expect(screen.getByText('Phone').className).toBe('nxcp-badge')
   })
 
   it('searches titles client-side and says when nothing matches', async () => {

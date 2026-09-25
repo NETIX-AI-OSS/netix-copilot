@@ -30,15 +30,14 @@ export function Launcher({ onOpen }: LauncherProps): ReactNode {
         onOpen()
       }}
     >
-      <span className='nxcp-launcher-halo' aria-hidden='true' />
       <span className='nxcp-launcher-tile' aria-hidden='true'>
         <svg
-          width={18}
-          height={18}
+          width={22}
+          height={22}
           viewBox='0 0 24 24'
           fill='none'
           stroke='currentColor'
-          strokeWidth={1.9}
+          strokeWidth={1.7}
           strokeLinecap='round'
           strokeLinejoin='round'
         >

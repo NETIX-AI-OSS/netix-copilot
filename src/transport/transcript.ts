@@ -346,6 +346,9 @@ export function mapUsage(usage: Record<string, unknown> | null | undefined): Cop
   if (typeof usage.completion_tokens === 'number') mapped.tokensOut = usage.completion_tokens
   if (typeof usage.calls === 'number') mapped.calls = usage.calls
   if (typeof usage.cost_usd === 'number') mapped.costUsd = usage.cost_usd
+  if (typeof usage.context_window === 'number' && usage.context_window > 0) {
+    mapped.contextWindow = usage.context_window
+  }
   if (typeof usage.credits_used === 'number') mapped.creditsUsed = usage.credits_used
   if (typeof usage.credits_remaining === 'number') {
     mapped.creditsRemaining = usage.credits_remaining

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { type CopilotPanelProps } from './panel';
-export type CopilotDockMode = 'min' | 'dock' | 'full';
+export type CopilotDockMode = 'min' | 'dock' | 'expanded' | 'full';
 export interface CopilotDockProps extends Omit<CopilotPanelProps, 'className' | 'layout'> {
     open?: boolean;
     onOpenChange?: (open: boolean) => void;

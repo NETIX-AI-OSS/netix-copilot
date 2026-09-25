@@ -122,28 +122,25 @@ Selecting the thread that is already open is a no-op while the panel holds turns
 click on the highlighted rail row cannot abort a live run; `startNewThread()` is how a panel is
 cleared.
 
-### Modes: `min`, `dock` and `full`
+### Modes: `min`, `dock` and `expanded`
 
-`CopilotDock` boots as a launcher pill (`min`), opens into a floating card (`dock`: 430 px wide by
-default, draggable between 320 and 720, `min(680px, 86vh)` tall, a bottom sheet under 640 px), and
-can be expanded into a page the host owns (`full`). `open` is simply `mode !== 'min'`; supply
-`mode` / `onModeChange` when the host has a route for full mode, and the header grows an Expand
-button. In full mode the dock renders nothing but keeps its state — the host page composes the
-same panel with the history rail beside it:
+`CopilotDock` boots as a launcher (`min`), opens into a floating card (`dock`: 430 px wide by
+default, draggable between 320 and 720, `min(720px, 100dvh - 40px)` tall, a bottom sheet under
+640 px), and expands in place (`expanded`): a centred modal sheet with the history rail beside the
+panel, full screen under 860 px. Expanding needs no host route and no host page; Escape, a click
+on the backdrop or _Back to dock_ returns to the card. `open` is simply `mode !== 'min'`, so a host
+that only tracks open/closed can keep using `open` / `onOpenChange`. Supply `mode` /
+`onModeChange` when the host wants to hold the whole state:
 
 ```tsx
-// App shell: the dock follows the route.
-<CopilotDock
-  mode={pathname === '/copilot' ? 'full' : mode}
-  onModeChange={(next) => (next === 'full' ? navigate('/copilot') : setMode(next))}
-/>
+const [mode, setMode] = useState<CopilotDockMode>('min')
 
-// /copilot page
-<div style={{ display: 'grid', gridTemplateColumns: '290px minmax(0, 1fr)' }}>
-  <HistoryRail />
-  <CopilotPanel layout='full' />
-</div>
+<CopilotDock mode={mode} onModeChange={setMode} />
 ```
+
+`full` remains for hosts built on v0.4, where a host page composes `CopilotPanel layout='full'`
+beside `HistoryRail`: in `full` the dock renders nothing but keeps its state. Expand no longer
+leads there — it opens `expanded` — so such a host can drop its page and route.
 
 In the dock, conversations live in a header popover (`ThreadsPopover`, rendered by `CopilotPanel`
 when `showThreads` is on). `HistoryRail` groups threads into Pinned · Today · Yesterday · This week

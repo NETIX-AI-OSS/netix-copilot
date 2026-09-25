@@ -251,6 +251,10 @@ function decodeUsage(source: Record<string, unknown>): CopilotUsage {
   if (calls !== undefined) usage.calls = calls
   const costUsd = asNumber(pick(nested, ['cost_usd', 'costUsd', 'cost']))
   if (costUsd !== undefined) usage.costUsd = costUsd
+  const contextWindow = asNumber(
+    pick(nested, ['context_window', 'contextWindow', 'max_context_tokens', 'context_tokens']),
+  )
+  if (contextWindow !== undefined && contextWindow > 0) usage.contextWindow = contextWindow
   const model = asString(pick(nested, ['model', 'model_name']))
   if (model !== undefined) usage.model = model
   return usage

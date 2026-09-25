@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { useCopilotAdapters, useCopilotEnabled, useCopilotEngine } from '../adapters/context'
 import { injectCopilotStyles } from '../ui/styles'
 import { themeToCssVars } from '../ui/theme'
+import { HistoryRail } from './history-rail'
 import { Launcher } from './launcher'
 import { CopilotPanel, type CopilotPanelProps } from './panel'
 
@@ -37,7 +38,10 @@ function clampWidth(width: number, fallback = DEFAULT_WIDTH): number {
   return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(width)))
 }
 
-export type CopilotDockMode = 'min' | 'dock' | 'full'
+// `expanded` is the package's own large view: a centred sheet with the history rail beside the
+// panel, no host route needed. `full` is the pre-0.5 contract, where the host page draws the
+// panel itself; the dock still steps aside for it, but Expand no longer leads there.
+export type CopilotDockMode = 'min' | 'dock' | 'expanded' | 'full'
 
 export interface CopilotDockProps extends Omit<CopilotPanelProps, 'className' | 'layout'> {
   open?: boolean
@@ -45,10 +49,9 @@ export interface CopilotDockProps extends Omit<CopilotPanelProps, 'className' | 
   defaultOpen?: boolean
   showLauncher?: boolean
   container?: HTMLElement | null
-  // `open` is `mode !== 'min'`. In full mode the dock renders nothing but keeps its state: the
+  // `open` is `mode !== 'min'`. In `full` mode the dock renders nothing but keeps its state: a
   // host page places CopilotPanel and HistoryRail itself and hands the mode back here.
   mode?: CopilotDockMode
-  // Expand is only offered when the host can act on it, since full mode is the host's page.
   onModeChange?: (mode: CopilotDockMode) => void
 }
 
@@ -101,8 +104,72 @@ export function CopilotDock({
     container === undefined ? (typeof document === 'undefined' ? null : document.body) : container
   if (!target || mode === 'full') return null
 
-  const content =
-    mode === 'dock' ? (
+  const controls = (
+    <>
+      {headerActions}
+      {mode === 'expanded' ? (
+        <button
+          type='button'
+          className='nxcp-icon-button'
+          aria-label={t('copilot.dock.collapse')}
+          title={t('copilot.dock.collapse')}
+          onClick={() => setMode('dock')}
+        >
+          <Icon path='M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7' />
+        </button>
+      ) : (
+        <button
+          type='button'
+          className='nxcp-icon-button'
+          aria-label={t('copilot.dock.expand')}
+          title={t('copilot.dock.expand')}
+          onClick={() => setMode('expanded')}
+        >
+          <Icon path='M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7' />
+        </button>
+      )}
+      <button
+        type='button'
+        className='nxcp-icon-button'
+        aria-label={t('copilot.dock.close')}
+        title={t('copilot.dock.close')}
+        onClick={() => setMode('min')}
+      >
+        <Icon path='M6 6l12 12M18 6L6 18' />
+      </button>
+    </>
+  )
+
+  let content: ReactNode = null
+  if (mode === 'expanded') {
+    content = (
+      <div className='nxcp-root nxcp-expanded-layer' style={themeToCssVars(theme)}>
+        <div className='nxcp-backdrop' aria-hidden='true' onClick={() => setMode('dock')} />
+        <div
+          className='nxcp-expanded'
+          role='dialog'
+          aria-modal='true'
+          aria-label={t('copilot.dock.label')}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape' && !event.defaultPrevented) setMode('dock')
+          }}
+        >
+          <aside className='nxcp-expanded-rail' aria-label={t('copilot.threads.label')}>
+            <HistoryRail />
+          </aside>
+          <CopilotPanel
+            {...panelProps}
+            layout='expanded'
+            autoFocus
+            // The rail sits beside the panel; the popover only shows where the rail cannot fit.
+            showThreads={showThreads}
+            headerActions={controls}
+          />
+        </div>
+      </div>
+    )
+  } else if (mode === 'dock') {
+    content = (
       <aside
         className='nxcp-root nxcp-dock'
         style={{ ...themeToCssVars(theme), width }}
@@ -139,75 +206,31 @@ export function CopilotDock({
           {...panelProps}
           layout='dock'
           showThreads={showThreads}
-          headerActions={
-            <>
-              {headerActions}
-              <button
-                type='button'
-                className='nxcp-icon-button'
-                aria-label={t('copilot.dock.minimise')}
-                title={t('copilot.dock.minimise')}
-                onClick={() => setMode('min')}
-              >
-                <svg
-                  width={13}
-                  height={13}
-                  viewBox='0 0 24 24'
-                  fill='none'
-                  stroke='currentColor'
-                  strokeWidth={2.4}
-                  aria-hidden='true'
-                >
-                  <path d='M5 12h14' />
-                </svg>
-              </button>
-              {onModeChange ? (
-                <button
-                  type='button'
-                  className='nxcp-icon-button'
-                  aria-label={t('copilot.dock.expand')}
-                  title={t('copilot.dock.expand')}
-                  onClick={() => setMode('full')}
-                >
-                  <svg
-                    width={13}
-                    height={13}
-                    viewBox='0 0 24 24'
-                    fill='none'
-                    stroke='currentColor'
-                    strokeWidth={2.2}
-                    aria-hidden='true'
-                  >
-                    <path d='M8 3H3v5M3 3l7 7M16 21h5v-5M21 21l-7-7' />
-                  </svg>
-                </button>
-              ) : null}
-              <button
-                type='button'
-                className='nxcp-icon-button'
-                aria-label={t('copilot.dock.close')}
-                title={t('copilot.dock.close')}
-                onClick={() => setMode('min')}
-              >
-                <svg
-                  width={13}
-                  height={13}
-                  viewBox='0 0 24 24'
-                  fill='none'
-                  stroke='currentColor'
-                  strokeWidth={2.4}
-                  aria-hidden='true'
-                >
-                  <path d='M6 6l12 12M18 6L6 18' />
-                </svg>
-              </button>
-            </>
-          }
+          headerActions={controls}
         />
       </aside>
-    ) : showLauncher ? (
-      <Launcher onOpen={() => setMode('dock')} />
-    ) : null
+    )
+  } else if (showLauncher) {
+    content = <Launcher onOpen={() => setMode('dock')} />
+  }
 
   return createPortal(content, target)
+}
+
+function Icon({ path }: { path: string }): ReactNode {
+  return (
+    <svg
+      width={14}
+      height={14}
+      viewBox='0 0 24 24'
+      fill='none'
+      stroke='currentColor'
+      strokeWidth={2}
+      strokeLinecap='round'
+      strokeLinejoin='round'
+      aria-hidden='true'
+    >
+      <path d={path} />
+    </svg>
+  )
 }

@@ -134,7 +134,7 @@ export class CopilotEngine {
   private activeSlowHandle: ReturnType<typeof setTimeout> | undefined
   private readonly liveTurnIds = new Set<string>()
   private readonly cancelAfterCreate = new Set<number>()
-  private dockMode: 'min' | 'dock' | 'full' = 'min'
+  private dockMode: 'min' | 'dock' | 'expanded' | 'full' = 'min'
 
   constructor(options: CopilotEngineOptions) {
     this.options = options
@@ -295,7 +295,7 @@ export class CopilotEngine {
     else this.cancelAfterCreate.add(this.threadSeq)
   }
 
-  recordDockMode(mode: 'min' | 'dock' | 'full'): void {
+  recordDockMode(mode: 'min' | 'dock' | 'expanded' | 'full'): void {
     const previous = this.dockMode
     this.dockMode = mode
     if (previous === 'min' && mode !== 'min') this.emitLifecycle({ type: 'dock_opened', mode })

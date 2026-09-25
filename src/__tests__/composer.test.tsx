@@ -199,6 +199,22 @@ describe('Send and Stop', () => {
     expect(screen.getByRole('button', { name: 'Stopping…' })).toBeTruthy()
   })
 
+  it('focuses the box from a press anywhere on the card, but leaves real controls alone', () => {
+    mount()
+    const box = screen.getByRole('textbox', { name: 'Message' })
+    fireEvent.change(box, { target: { value: 'draft' } })
+    box.blur()
+    fireEvent.mouseDown(document.querySelector('.nxcp-composer-toolbar') as HTMLElement)
+    expect(document.activeElement).toBe(box)
+    expect((box as HTMLTextAreaElement).selectionStart).toBe(5)
+
+    box.blur()
+    const tier = screen.getByRole('button', { name: /^Response quality/ })
+    // A control's own press is not cancelled, so it still takes focus and opens as usual.
+    expect(fireEvent.mouseDown(tier)).toBe(true)
+    expect(document.activeElement).not.toBe(box)
+  })
+
   it('keeps the tier picker beside the primary button', () => {
     mount()
     const toolbar = document.querySelector('.nxcp-composer-toolbar') as HTMLElement
@@ -207,20 +223,65 @@ describe('Send and Stop', () => {
   })
 })
 
-describe('meta row', () => {
-  it('carries the disclaimer and the keyboard hint', () => {
+describe('what sits around the card', () => {
+  it('shows the disclaimer above the card only until the first question', async () => {
     mount()
-    const meta = document.querySelector('.nxcp-composer-meta') as HTMLElement
-    expect(meta.textContent).toContain('Answers can be wrong')
-    expect(meta.textContent).toContain('Enter to send · Shift+Enter for a new line')
+    expect(document.querySelector('.nxcp-disclaimer')?.textContent).toContain(
+      'Answers can be wrong',
+    )
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
+      target: { value: 'hello' },
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    })
+    expect(document.querySelector('.nxcp-disclaimer')).toBeNull()
+    expect(screen.queryByText(/Answers can be wrong/)).toBeNull()
+  })
+
+  it('puts host facts on a quiet line under the card and keeps the tier menu to tiers', () => {
+    render(
+      <CopilotProvider
+        config={{ baseUrl: 'https://x' }}
+        adapters={testAdapters()}
+        transport={new RecordingTransport()}
+      >
+        <Composer meta={<span>Powered by Test</span>} />
+      </CopilotProvider>,
+    )
+    expect(document.querySelector('.nxcp-compose-foot')?.textContent).toBe('Powered by Test')
+    fireEvent.click(screen.getByRole('button', { name: /^Response quality/ }))
+    const menu = screen.getByRole('dialog', { name: 'Response quality' })
+    expect(menu.textContent).not.toContain('Powered by Test')
+    expect(screen.getAllByRole('radio')).toHaveLength(3)
+    // Nothing has run yet, so there is no usage meter to show.
+    expect(screen.queryByRole('button', { name: /^Usage/ })).toBeNull()
   })
 })
 
-describe('tier labels', () => {
-  it('come from the host translate function, not the metadata table', () => {
+describe('tier menu', () => {
+  it('names the tier on its pill and offers every tier through the host translate function', () => {
     mount({ t: (key: string) => `T:${key}` })
-    expect(screen.getByRole('option', { name: 'T:copilot.tier.base' })).toBeTruthy()
-    expect(screen.getByRole('option', { name: 'T:copilot.tier.high' })).toBeTruthy()
-    expect(screen.getByRole('option', { name: 'T:copilot.tier.max' })).toBeTruthy()
+    const pill = screen.getByRole('button', { name: 'T:copilot.tier.label: T:copilot.tier.base' })
+    expect(pill.getAttribute('aria-expanded')).toBe('false')
+    fireEvent.click(pill)
+    expect(pill.getAttribute('aria-expanded')).toBe('true')
+    expect(
+      screen.getByRole('radio', { name: 'T:copilot.tier.base' }).getAttribute('aria-checked'),
+    ).toBe('true')
+    expect(screen.getByRole('radio', { name: 'T:copilot.tier.high' })).toBeTruthy()
+    expect(screen.getByRole('radio', { name: 'T:copilot.tier.max' })).toBeTruthy()
+  })
+
+  it('closes on Escape and on a press outside, and returns focus to the pill', () => {
+    mount()
+    const pill = screen.getByRole('button', { name: /^Response quality/ })
+    fireEvent.click(pill)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('dialog', { name: 'Response quality' })).toBeNull()
+    expect(document.activeElement).toBe(pill)
+    fireEvent.click(pill)
+    fireEvent.mouseDown(document.body)
+    expect(screen.queryByRole('dialog', { name: 'Response quality' })).toBeNull()
   })
 })

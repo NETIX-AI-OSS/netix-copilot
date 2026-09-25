@@ -25,6 +25,9 @@ const MS_MINUTE = 60_000
 const TITLE_MAX = 48
 // The surfaces ml-engine records; anything else draws no badge rather than a raw wire value.
 const SURFACES = new Set(['web', 'mobile', 'embed', 'api'])
+// The defaults draw no chip: a rail where every row says "Base 1x · Web" says nothing.
+const DEFAULT_TIER = 'base'
+const DEFAULT_SURFACE = 'web'
 
 type Group = 'pinned' | 'today' | 'yesterday' | 'week' | 'earlier'
 const GROUP_ORDER: readonly Group[] = ['pinned', 'today', 'yesterday', 'week', 'earlier']
@@ -207,10 +210,12 @@ export function HistoryRail({
                 {clip(thread.title) || t('copilot.history.untitled')}
               </span>
               <span className='nxcp-thread-meta'>
-                {thread.modelTier ? (
+                {thread.modelTier && thread.modelTier !== DEFAULT_TIER ? (
                   <span className='nxcp-badge'>{t(`copilot.tier.${thread.modelTier}`)}</span>
                 ) : null}
-                {thread.surface && SURFACES.has(thread.surface) ? (
+                {thread.surface &&
+                thread.surface !== DEFAULT_SURFACE &&
+                SURFACES.has(thread.surface) ? (
                   <span className='nxcp-badge'>{t(`copilot.surface.${thread.surface}`)}</span>
                 ) : null}
                 <span className='nxcp-thread-time'>
@@ -373,7 +378,7 @@ export function ThreadsPopover(): ReactNode {
       <button
         ref={trigger}
         type='button'
-        className='nxcp-icon-button'
+        className='nxcp-icon-button nxcp-threads-trigger'
         aria-label={t('copilot.threads.label')}
         title={t('copilot.threads.label')}
         aria-haspopup='dialog'

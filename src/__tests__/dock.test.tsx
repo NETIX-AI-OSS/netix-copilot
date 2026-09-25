@@ -249,14 +249,37 @@ describe('CopilotDock', () => {
     expect(screen.getByRole('alert').textContent).toContain('Monthly chat credit limit')
   })
 
-  it('reports tokens in the footer but hides credits the backend never sends', async () => {
+  it('reports tokens in the usage popover but hides credits the backend never sends', async () => {
     const transport = new ScriptedTransport()
     mount(transport)
     await send('hello')
     transport.emit({ event: { type: 'usage', usage: { tokensIn: 900, tokensOut: 40 } } })
+    fireEvent.click(screen.getByRole('button', { name: /^Usage/ }))
 
-    expect(screen.getByText('900 in / 40 out')).toBeTruthy()
-    expect(screen.queryByText(/credits left/)).toBeNull()
+    const panel = screen.getByRole('dialog', { name: 'Usage' })
+    expect(panel.textContent).toContain('Input tokens900')
+    expect(panel.textContent).toContain('Output tokens40')
+    expect(panel.textContent).not.toContain('Credits left')
+    // No window was reported: no context section, and no ring that would read as progress.
+    expect(panel.textContent).not.toContain('Context window')
+    expect(document.querySelector('.nxcp-usage-fill')).toBeNull()
+    expect(document.querySelector('.nxcp-usage-track')).toBeNull()
+  })
+
+  it('fills the meter against the context window the backend reports', async () => {
+    const transport = new ScriptedTransport()
+    mount(transport)
+    await send('hello')
+    transport.emit({
+      event: { type: 'usage', usage: { tokensIn: 150_000, contextWindow: 200_000 } },
+    })
+    const meter = screen.getByRole('button', { name: 'Usage: Context window 75%' })
+    expect(meter.dataset.level).toBe('mid')
+    expect(document.querySelector('.nxcp-usage-fill')).toBeTruthy()
+    fireEvent.click(meter)
+    expect(screen.getByRole('dialog', { name: 'Usage' }).textContent).toContain(
+      '150K of 200K tokens',
+    )
   })
 
   it('shows credits once the backend does send them', async () => {
@@ -264,7 +287,8 @@ describe('CopilotDock', () => {
     mount(transport)
     await send('hello')
     transport.emit({ event: { type: 'usage', usage: { creditsRemaining: 88 } } })
-    expect(screen.getByText('88 credits left')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /^Usage/ }))
+    expect(screen.getByRole('dialog', { name: 'Usage' }).textContent).toContain('Credits left88')
   })
 
   it('names the transport actually in use', async () => {
@@ -274,6 +298,7 @@ describe('CopilotDock', () => {
     act(() => {
       transport.consumeCalls[0]?.onTransportChange?.('agentic')
     })
+    fireEvent.click(screen.getByRole('button', { name: /^Usage/ }))
     expect(screen.getByRole('img', { name: 'polling' }).getAttribute('data-transport')).toBe(
       'agentic',
     )
@@ -449,24 +474,42 @@ describe('CopilotDock modes', () => {
     expect(screen.getByRole('button', { name: 'Ask Copilot' })).toBeTruthy()
   })
 
-  it('offers Expand only when the host can act on it', () => {
+  it('expands in place into the large view with the history rail, no host route needed', () => {
     renderDock({ defaultOpen: true })
+    fireEvent.click(screen.getByRole('button', { name: 'Expand' }))
+    const sheet = screen.getByRole('dialog', { name: 'Copilot assistant' })
+    expect(sheet.getAttribute('aria-modal')).toBe('true')
+    expect(screen.getByRole('complementary', { name: 'Conversations' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Back to dock' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Expand' })).toBeNull()
-    cleanup()
+    // Expanded is still open, so the stored open state is untouched.
+    expect(window.localStorage.getItem('netix-copilot.open')).toBe('true')
+    fireEvent.click(screen.getByRole('button', { name: 'Back to dock' }))
+    expect(screen.queryByRole('dialog', { name: 'Copilot assistant' })).toBeNull()
+    expect(screen.getByRole('complementary', { name: 'Copilot assistant' })).toBeTruthy()
+  })
+
+  it('leaves the large view on Escape and on a backdrop click', () => {
     const onModeChange = vi.fn()
     renderDock({ defaultOpen: true, onModeChange })
     fireEvent.click(screen.getByRole('button', { name: 'Expand' }))
-    expect(onModeChange).toHaveBeenCalledWith('full')
-    // Uncontrolled: the dock steps aside for the host page and remembers it was open.
-    expect(screen.queryByRole('complementary')).toBeNull()
-    expect(window.localStorage.getItem('netix-copilot.open')).toBe('true')
+    expect(onModeChange).toHaveBeenLastCalledWith('expanded')
+    fireEvent.keyDown(screen.getByRole('dialog', { name: 'Copilot assistant' }), { key: 'Escape' })
+    expect(onModeChange).toHaveBeenLastCalledWith('dock')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand' }))
+    fireEvent.click(document.querySelector('.nxcp-backdrop') as HTMLElement)
+    expect(onModeChange).toHaveBeenLastCalledWith('dock')
+    expect(screen.getByRole('complementary', { name: 'Copilot assistant' })).toBeTruthy()
   })
 
-  it('minimises to the launcher and reports both views of the change', () => {
+  it('closes to the launcher and reports both views of the change', () => {
     const onModeChange = vi.fn()
     const onOpenChange = vi.fn()
     renderDock({ defaultOpen: true, onModeChange, onOpenChange })
-    fireEvent.click(screen.getByRole('button', { name: 'Minimise' }))
+    // One way out: Minimise and Close did the same thing, so only Close remains.
+    expect(screen.queryByRole('button', { name: 'Minimise' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Close copilot' }))
     expect(onModeChange).toHaveBeenCalledWith('min')
     expect(onOpenChange).toHaveBeenCalledWith(false)
     expect(screen.getByRole('button', { name: 'Ask Copilot' })).toBeTruthy()
@@ -484,12 +527,12 @@ describe('CopilotDock modes', () => {
     expect(screen.queryByRole('complementary')).toBeNull()
   })
 
-  it('does not report an open change when the mode moves between dock and full', () => {
+  it('does not report an open change when the mode moves between dock and expanded', () => {
     const onModeChange = vi.fn()
     const onOpenChange = vi.fn()
     renderDock({ mode: 'dock', onModeChange, onOpenChange })
     fireEvent.click(screen.getByRole('button', { name: 'Expand' }))
-    expect(onModeChange).toHaveBeenCalledWith('full')
+    expect(onModeChange).toHaveBeenCalledWith('expanded')
     expect(onOpenChange).not.toHaveBeenCalled()
     expect(window.localStorage.getItem('netix-copilot.open')).toBeNull()
   })

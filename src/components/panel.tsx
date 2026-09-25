@@ -12,11 +12,10 @@ import { isRunActive } from '../runtime/run-store'
 import { injectCopilotStyles } from '../ui/styles'
 import { themeToCssVars } from '../ui/theme'
 import { Composer } from './composer'
-import { EmptyState, QuickPrompts, SparkIcon } from './empty-state'
+import { EmptyState, QuickPrompts } from './empty-state'
 import { ThreadsPopover } from './history-rail'
 import { MessageView } from './message-view'
 import { ToastHost } from './toast-pill'
-import { UsageFooter } from './usage-footer'
 
 export interface CopilotPanelProps {
   title?: ReactNode
@@ -27,9 +26,9 @@ export interface CopilotPanelProps {
   showThreads?: boolean
   autoFocus?: boolean
   className?: string
-  // In the dock, conversations live in a header popover. In full mode the host places
-  // HistoryRail beside the panel, so nothing about threads renders here.
-  layout?: 'dock' | 'full'
+  // In the dock, conversations live in a header popover. Expanded (the dock's own large view)
+  // and full (a host page) place HistoryRail beside the panel, so no popover renders there.
+  layout?: 'dock' | 'expanded' | 'full'
   renderTurn?: (turn: CopilotTurnView, defaultView: ReactNode) => ReactNode
 }
 
@@ -60,8 +59,8 @@ export function CopilotPanel({
     const node = bodyRef.current
     if (!node) return
     const distance = node.scrollHeight - node.scrollTop - node.clientHeight
-    if (distance < 140) node.scrollTop = node.scrollHeight
-  }, [run?.text.length, state.turns.length])
+    if (distance < 160) node.scrollTop = node.scrollHeight
+  }, [run?.text.length, run?.steps.length, run?.status, state.turns.length])
 
   return (
     <section
@@ -72,32 +71,31 @@ export function CopilotPanel({
     >
       <header className='nxcp-header'>
         <span className='nxcp-title'>
-          <SparkIcon size={14} />
-          {title ?? t('copilot.dock.title')}
+          <span className='nxcp-title-text'>{title ?? t('copilot.dock.title')}</span>
         </span>
-        {layout === 'full' ? (
-          <span className='nxcp-caption'>{t('copilot.dock.caption')}</span>
-        ) : null}
         <span className='nxcp-header-actions'>
-          {showThreads && layout === 'dock' ? <ThreadsPopover /> : null}
+          {showThreads && layout !== 'full' ? <ThreadsPopover /> : null}
           <button
             type='button'
-            className='nxcp-icon-button'
+            className='nxcp-icon-button nxcp-header-new'
             aria-label={t('copilot.dock.new')}
             title={t('copilot.dock.new')}
             onClick={() => engine.startNewThread()}
-            disabled={busy}
+            disabled={busy || state.turns.length === 0}
           >
             <svg
-              width={13}
-              height={13}
+              width={14}
+              height={14}
               viewBox='0 0 24 24'
               fill='none'
               stroke='currentColor'
-              strokeWidth={2.4}
+              strokeWidth={2}
+              strokeLinecap='round'
+              strokeLinejoin='round'
               aria-hidden='true'
             >
-              <path d='M12 5v14M5 12h14' />
+              <path d='M12 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6' />
+              <path d='M18.4 2.6a2 2 0 0 1 3 3L12 15l-4 1 1-4z' />
             </svg>
           </button>
           {headerActions}
@@ -105,33 +103,36 @@ export function CopilotPanel({
       </header>
       {!state.online ? <div className='nxcp-banner'>{t('copilot.status.offline')}</div> : null}
       <div className='nxcp-body' ref={bodyRef}>
-        {state.threadLoading ? (
-          <p className='nxcp-empty'>{t('copilot.threads.restoring')}</p>
-        ) : state.turns.length === 0 ? (
-          emptyState === undefined ? (
-            <EmptyState
-              heading={t('copilot.dock.title')}
-              body={t('copilot.dock.empty')}
-              chips={chips}
-              onSelect={send}
-            />
+        <div className='nxcp-body-inner'>
+          {state.threadLoading ? (
+            <p className='nxcp-empty'>{t('copilot.threads.restoring')}</p>
+          ) : state.turns.length === 0 ? (
+            emptyState === undefined ? (
+              <EmptyState
+                heading={t('copilot.dock.title')}
+                body={t('copilot.dock.empty')}
+                chips={chips}
+                onSelect={send}
+              />
+            ) : (
+              // A host placeholder stands in for the whole default block, as it did in v0.3.
+              <div className='nxcp-empty-state'>
+                {emptyState}
+                <QuickPrompts chips={chips} onSelect={send} />
+              </div>
+            )
           ) : (
-            // A host placeholder stands in for the whole default block, as it did in v0.3.
-            <div className='nxcp-empty-state'>
-              {emptyState}
-              <QuickPrompts chips={chips} onSelect={send} />
-            </div>
-          )
-        ) : (
-          state.turns.map((turn) => {
-            const view = <MessageView key={turn.id} turn={turn} />
-            return renderTurn ? <div key={turn.id}>{renderTurn(turn, view)}</div> : view
-          })
-        )}
+            state.turns.map((turn) => {
+              const view = <MessageView key={turn.id} turn={turn} />
+              return renderTurn ? <div key={turn.id}>{renderTurn(turn, view)}</div> : view
+            })
+          )}
+        </div>
       </div>
-      <Composer autoFocus={autoFocus} />
-      <UsageFooter usage={run?.usage} transport={state.transport} modelTier={state.modelTier} />
-      {footerActions ? <div className='nxcp-footer-actions'>{footerActions}</div> : null}
+      <Composer
+        autoFocus={autoFocus}
+        meta={footerActions ? <div className='nxcp-footer-actions'>{footerActions}</div> : null}
+      />
       <ToastHost />
     </section>
   )

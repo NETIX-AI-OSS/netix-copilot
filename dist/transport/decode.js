@@ -251,6 +251,9 @@ function decodeUsage(source) {
     const costUsd = asNumber(pick(nested, ['cost_usd', 'costUsd', 'cost']));
     if (costUsd !== undefined)
         usage.costUsd = costUsd;
+    const contextWindow = asNumber(pick(nested, ['context_window', 'contextWindow', 'max_context_tokens', 'context_tokens']));
+    if (contextWindow !== undefined && contextWindow > 0)
+        usage.contextWindow = contextWindow;
     const model = asString(pick(nested, ['model', 'model_name']));
     if (model !== undefined)
         usage.model = model;

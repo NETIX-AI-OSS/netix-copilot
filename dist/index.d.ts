@@ -40,6 +40,7 @@ export type { ResultTableProps } from './components/result-table';
 export { hasResultContent, ResultTable, toCsv } from './components/result-table';
 export type { RunBadgesProps } from './components/run-badges';
 export { RunBadges } from './components/run-badges';
+export { TierMenu, UsageMeter } from './components/run-menu';
 export type { GlyphKind, StatusGlyphProps } from './components/status-glyph';
 export { StatusGlyph, stepGlyph } from './components/status-glyph';
 export type { StepRowProps } from './components/step-row';
