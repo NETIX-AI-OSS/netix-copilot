@@ -52,9 +52,7 @@ function Composer({ autoFocus, meta }) {
         }
     };
     const stopping = run?.cancellation?.status === 'requested';
-    return ((0, jsx_runtime_1.jsxs)("div", { className: 'nxcp-compose-shell', children: [state.turns.length === 0 ? (
-            // Said once, before the first question; a conversation in progress needs no reminder.
-            (0, jsx_runtime_1.jsxs)("p", { className: 'nxcp-disclaimer', children: [(0, jsx_runtime_1.jsxs)("svg", { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', "aria-hidden": 'true', children: [(0, jsx_runtime_1.jsx)("circle", { cx: 12, cy: 12, r: 9.5 }), (0, jsx_runtime_1.jsx)("path", { d: 'M12 11v5.5M12 7.6v.1' })] }), (0, jsx_runtime_1.jsx)("span", { children: t('copilot.composer.disclaimer') })] })) : null, (0, jsx_runtime_1.jsxs)("div", { className: 'nxcp-composer', onMouseDown: (event) => {
+    return ((0, jsx_runtime_1.jsxs)("div", { className: 'nxcp-compose-shell', children: [state.turns.length === 0 ? ((0, jsx_runtime_1.jsxs)("p", { className: 'nxcp-disclaimer', children: [(0, jsx_runtime_1.jsxs)("svg", { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', "aria-hidden": 'true', children: [(0, jsx_runtime_1.jsx)("circle", { cx: 12, cy: 12, r: 9.5 }), (0, jsx_runtime_1.jsx)("path", { d: 'M12 11v5.5M12 7.6v.1' })] }), (0, jsx_runtime_1.jsx)("span", { children: t('copilot.composer.disclaimer') })] })) : null, (0, jsx_runtime_1.jsxs)("div", { className: 'nxcp-composer', onMouseDown: (event) => {
                     // The whole card is the target: a press on its padding or the empty toolbar still lands
                     // in the box, with the caret at the end, and never steals focus from a real control.
                     if (event.target.closest(OWN_CLICK))
