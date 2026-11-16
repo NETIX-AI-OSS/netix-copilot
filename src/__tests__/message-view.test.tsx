@@ -330,7 +330,7 @@ describe('CSV export', () => {
     const blob = createObjectURL.mock.calls[0]?.[0] as unknown as Blob
     expect(blob.type).toBe('text/csv;charset=utf-8')
     expect(click).toHaveBeenCalledTimes(1)
-    expect(notify).toHaveBeenCalledWith({ message: 'Table exported — 12 rows' })
+    expect(notify).toHaveBeenCalledWith({ message: 'Table exported, 12 rows' })
 
     const csv = toCsv({ columns: ['name', 'closed'], rows, raw: null })
     const lines = csv.split('\n')

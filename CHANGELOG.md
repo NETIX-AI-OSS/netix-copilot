@@ -5,7 +5,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [0.5.0] — 2026-09-25
+## [0.5.0], 2026-09-25
 
 A redesign of every surface toward current coding-agent UIs, and an in-package large view so a
 host no longer needs its own copilot page. The engine, transport and wire contract are unchanged.
@@ -90,7 +90,7 @@ Behaviour and DOM a host may depend on. No export was removed.
    hook.
 4. Update tests for Close (not Minimise), the tier `button`/`radio`s, and usage behind the meter.
 
-## [0.4.2] — 2026-09-12
+## [0.4.2], 2026-09-12
 
 ### Fixed
 
@@ -111,7 +111,7 @@ Behaviour and DOM a host may depend on. No export was removed.
   `run_failed`, and `run_slow` events. Prompt and answer text are excluded, and restored history
   never emits live-run outcomes. `slowRunThresholdMs` configures the slow threshold (10 s default).
 
-## [0.4.1] — 2026-09-03
+## [0.4.1], 2026-09-03
 
 Four defects found by a read-only review of the host integration. No export, prop or host-facing
 class name changes.
@@ -120,7 +120,7 @@ class name changes.
 
 - **Re-selecting the open thread no longer drops a live run.** Every rail row click goes to
   `engine.selectThread`, and `loadThread` began by aborting the active reader and emptying the
-  turns — without sending `cancelTurn`, so a mis-click on the highlighted row lost the answer while
+  turns, without sending `cancelTurn`, so a mis-click on the highlighted row lost the answer while
   ml-engine kept spending on it. `selectThread` and `loadThread` are now a no-op when the id is the
   open thread and the panel holds turns for it, a live run included. An empty panel, which is what
   a failed load leaves, still refetches.
@@ -142,14 +142,14 @@ class name changes.
 - `copilot.surface.web`, `.mobile`, `.embed`, `.api` (Web, Mobile, Embedded, API).
 - **`locale` adapter.** An optional BCP 47 tag for the history rail's time and date stamps.
   Without it the browser locale applies, as before.
-- **Answer typography: list markers, GFM tables, key–value grids, lede.** `.nxcp-answer` sets the
+- **Answer typography: list markers, GFM tables, key-value grids, lede.** `.nxcp-answer` sets the
   type scale (14 px body in `--nxcp-text`, list markers a host preflight strips, GFM tables) for
   the built-in renderer and a host `renderMarkdown` alike; `AnswerBlocks` then turns a
   `label: value` list into `.nxcp-kv` (`.nxcp-kv-label`, `.nxcp-kv-value`), wraps a table in
   `.nxcp-answer-scroll` with numeric cells as `.nxcp-answer-num`, and marks a short opening
-  paragraph `.nxcp-answer-lede` — once the stream has settled.
+  paragraph `.nxcp-answer-lede`, once the stream has settled.
 
-## [0.4.0] — 2026-09-03
+## [0.4.0], 2026-09-03
 
 ### Added
 
@@ -188,7 +188,7 @@ class name changes.
 
 - The dock is a floating card (430 px wide by default, capped at 94vw, `min(680px, 86vh)` tall,
   inset 22 px) with a FAB launcher instead of a full-height panel and text button; the width drag
-  and its 320–720 clamp are unchanged. Threads no longer render as a strip inside the dock.
+  and its 320-720 clamp are unchanged. Threads no longer render as a strip inside the dock.
 - `MessageView` renders the new assistant anatomy: meta row, trace, answer, artifact cards,
   approval cards, banners, answer strip. `PlanTimeline` and `RunBadges` stay exported as the
   legacy flat views. The queue position and "Thinking…" now live in the trace header.
@@ -215,7 +215,7 @@ class name changes.
   row is dropped once the terminal event carries the plan; `RunState.rebuilt` is set only when a
   stored call never streamed, not when the read-back merely filled in lineage.
 
-## [0.3.0] — 2026-08-24
+## [0.3.0], 2026-08-24
 
 ### Added
 
@@ -232,7 +232,7 @@ class name changes.
 - The composer and usage footer now share polished light/dark, narrow-width, and reduced-motion styles.
 - Usage renders friendly tier labels only, and renders provider cost only when the server supplies it.
 
-## [0.2.3] — 2026-08-22
+## [0.2.3], 2026-08-22
 
 Both defects here were found while adopting streaming in cafm-v2-ui, and both undo the same thing:
 they make a run less visible than the drawer it replaces. One decides the streaming contract is not
@@ -244,11 +244,11 @@ the result table on every live run, and gets them back only when the thread is r
 - **A real 404 is no longer read as a missing route.** `isRouteMissing` was a bare status test, so
   it could not tell "this cluster does not serve this route" from "this resource does not exist".
   ml-engine's `ConversationTurnViewSet._thread` raises `NotFound("No such thread.")` when a create
-  names a thread that is missing or belongs to someone else — a genuine 404, with a JSON body — and
+  names a thread that is missing or belongs to someone else, a genuine 404, with a JSON body, and
   `AutoTransport` read that as proof the streaming routes were undeployed and pinned the tab to the
   agentic contract for the rest of its life. One stale bookmarked `?thread=` cost that tab streaming
   permanently, invisibly, and sent the reply to `POST /api/agentic-ml-request/<that id>/reply/`.
-  A 404 whose body is a DRF error object — a JSON object carrying a non-empty string `detail` — is
+  A 404 whose body is a DRF error object, a JSON object carrying a non-empty string `detail`, is
   now a resource error and is raised, with that detail as the error message so the user reads
   "No such thread." rather than a status line. 405 and 501 stay fallback-worthy whatever the body:
   they answer about the contract, not about the resource.
@@ -256,13 +256,13 @@ the result table on every live run, and gets them back only when the thread is r
   answer, and `AutoTransport`'s decision outlives the request by the life of the tab. Before giving
   up streaming it now asks the streaming contract directly, through the new optional
   `CopilotTransport.isDeployed()`, which `SseTransport` answers with a read of
-  `GET /api/copilot-conversation/` — a route that takes no arguments and so cannot answer about a
+  `GET /api/copilot-conversation/`, a route that takes no arguments and so cannot answer about a
   resource. Only a missing route there is believed; a list, a 401 or a 500 all mean the contract is
   served. A transport that does not implement the probe degrades exactly as before. The probe runs
   on the failure path only, once, and never on the remembered answer.
 - **Streaming keeps the tools badge and the result table.** `RunState.tools` and
   `RunState.resultData` are populated from the terminal payload, and ml-engine's SSE `done` frame
-  carries `status`, `turn_id`, `execution_time`, `chart_available` and `response_chars` — not
+  carries `status`, `turn_id`, `execution_time`, `chart_available` and `response_chars`, not
   `tools`, not `result_data`. The `error` frame is thinner still. So adopting streaming was a
   visible regression against the agentic transport, which synthesises both by diffing the row
   snapshot. `SseTransport` now holds the terminal event back for exactly one read of
@@ -280,8 +280,8 @@ the result table on every live run, and gets them back only when the thread is r
 
 ### Notes
 
-- **This did not belong in ml-engine.** Adding `tools` to the `done` frame would fit — it is a short
-  list of names — but the tool output behind the result table would not, and `encode_payload` in
+- **This did not belong in ml-engine.** Adding `tools` to the `done` frame would fit, it is a short
+  list of names, but the tool output behind the result table would not, and `encode_payload` in
   `service/copilot/events.py` replaces any event over `COPILOT_EVENT_MAX_BYTES` with a truncation
   marker rather than trimming it, so an oversized frame loses the whole run summary. The SDK would
   still need the read-back for the table, so the backend change buys nothing the SDK does not
@@ -293,10 +293,10 @@ the result table on every live run, and gets them back only when the thread is r
   reads on `AutoTransport`. Those are answers about one request, used for one request, and were
   left as they are.
 
-## [0.2.2] — 2026-08-22
+## [0.2.2], 2026-08-22
 
 A follow-up to v0.2.1, and reachable because of it. Moving the thread reads onto the streaming
-transport was right — a thread id is a Conversation id and only that contract resolves one — but
+transport was right, a thread id is a Conversation id and only that contract resolves one, but
 those two reads were the only transport methods with no `isRouteMissing` degrade, so on a cluster
 whose ml-engine has not shipped the copilot routes they rejected instead of answering empty. Both
 host apps mount the dock on every authenticated route, so that is a per-page-load failure on an
@@ -305,8 +305,8 @@ always-on surface, which is the class of problem this package was written to rem
 ### Fixed
 
 - **A missing thread route answers empty instead of throwing.** `listThreads` and `fetchThread`
-  now degrade on 404/405/501 in all three transports — `AutoTransport`, `SseTransport` and
-  `AgenticTransport` — so a `transport: 'sse'` or `transport: 'agentic'` pin is covered as well as
+  now degrade on 404/405/501 in all three transports, `AutoTransport`, `SseTransport` and
+  `AgenticTransport`, so a `transport: 'sse'` or `transport: 'agentic'` pin is covered as well as
   the `auto` default. A service with no thread store genuinely has no threads. Anything that is
   not a missing route still raises, so a real failure cannot pose as "no history".
 - The thread reads deliberately do **not** fall back to the polling transport. A Conversation id is
@@ -326,7 +326,7 @@ everything, because the run ends server-side regardless; `respondToApproval` sta
 since quietly reporting success for a decision nothing recorded would tell a user a destructive
 action was authorised.
 
-## [0.2.1] — 2026-08-22
+## [0.2.1], 2026-08-22
 
 A wire-contract repair. ml-engine's copilot admin API added `POST /api/copilot-turn/`, and this
 SDK was still pointing its create at the blueprint's `/api/copilot/turns/`. The effect was not a
@@ -343,7 +343,7 @@ contract on every first send, and the streaming path this package exists for nev
   and diffs snapshots the way the agentic transport does. An event-page payload is still accepted,
   so a host that points `pollTurn` at one of its own keeps working.
 - **`AutoTransport` reads threads through streaming** before a transport is chosen. A thread id is
-  a conversation id — it is what a briefing deep link carries — and only the streaming contract can
+  a conversation id, it is what a briefing deep link carries, and only the streaming contract can
   resolve one, so sending it to the agentic detail route fetched the wrong row.
 - **The engine resumes on the `stream_url` the create returned** instead of re-deriving it from
   the template when the browser comes back online.
@@ -360,11 +360,11 @@ contract on every first send, and the streaming path this package exists for nev
 ### Removed
 
 - **`scope` is no longer sent on the SSE create body.** `CopilotAskSerializer` declares no scope
-  field, so DRF dropped it — while it still changed the idempotency fingerprint. `SendTurnInput.scope`
+  field, so DRF dropped it, while it still changed the idempotency fingerprint. `SendTurnInput.scope`
   stays: the agentic transport reads `organization_id` and `user_id` out of it, and page context
   reaches the model through `transformPrompt` as it already did.
 
-## [0.2.0] — 2026-08-21
+## [0.2.0], 2026-08-21
 
 The first release written against a shipped backend rather than a blueprint, and against a real
 adoption rather than an imagined one. cafm-v2-ui's PR #1734 could not use `CopilotDock` at all and
@@ -376,7 +376,7 @@ composed its own drawer out of the exported primitives; everything below is what
   which is what a `?ai_open=1` URL contract, `?open_knowledge_base=1`, a topbar button and a
   `?thread=` deep link all need. Precedence is now explicit and tested: the `open` prop beats the
   stored value, the stored value beats `defaultOpen`. localStorage persistence stays, but only for
-  the uncontrolled dock — a controlled host is never overwritten by a stale stored value.
+  the uncontrolled dock, a controlled host is never overwritten by a stale stored value.
 - **`showLauncher`**, for a host that opens the dock from its own chrome and does not want the
   floating launcher as well.
 - **`transformPrompt` adapter**, so what goes on the wire and what the user reads can differ.
@@ -385,9 +385,9 @@ composed its own drawer out of the exported primitives; everything below is what
   for the transcript; `CopilotTurnView.wirePrompt` records the difference without rendering it.
   `engine.send(prompt, scope, { wireText })` is the same split at the engine level, and
   `resolveCopilotPrompt` is the pure resolver behind both.
-- **`result_data` tables.** `CopilotResultData` normalizes every shape the field comes back in —
+- **`result_data` tables.** `CopilotResultData` normalizes every shape the field comes back in -
   `{columns, data}`, `{columns, rows}`, positional rows, a bare list of row objects, a plain
-  object, a scalar, or any of those stored as JSON text — and `ResultTable` renders it, capped at
+  object, a scalar, or any of those stored as JSON text, and `ResultTable` renders it, capped at
   ten rows with a count of what is hidden, exactly as the drawer it replaces did.
 - **Per-message badges.** `RunBadges` reports the run status, how long it took and which tools it
   used. `MessageView` renders both new surfaces by default; `showBadges={false}` and
@@ -449,7 +449,7 @@ composed its own drawer out of the exported primitives; everything below is what
   the `turn_id` to tail. `transport: 'auto'` therefore still resolves to the poll transport on the
   first send in every current cluster, exactly as it did in v0.1.0.
 
-## [0.1.0] — 2026-08-21
+## [0.1.0], 2026-08-21
 
 Initial release.
 

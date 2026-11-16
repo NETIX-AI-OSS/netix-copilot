@@ -1,7 +1,7 @@
 # netix-copilot
 
-Version 0.5.0 is a redesign toward current coding-agent UIs — a quieter dock, an inline reasoning
-trace, a composer with tier and usage popovers — and adds an in-package **`expanded`** mode, so a
+Version 0.5.0 is a redesign toward current coding-agent UIs, a quieter dock, an inline reasoning
+trace, a composer with tier and usage popovers, and adds an in-package **`expanded`** mode, so a
 host gets a large view with the history rail without a page or route of its own. The engine,
 transport and wire contract are unchanged from 0.4; see the CHANGELOG for the host-facing
 behaviour changes. Version 0.4.0 introduced the assistant design: the `min` · `dock` mode machine,
@@ -21,8 +21,8 @@ specialist sub-agents and their tool calls as they happen.
 One persistent, streaming copilot dock for the NETIX front ends, replacing the per-app chat
 drawers that were copy-pasted across viz-ui, cafm-v2-ui and their siblings.
 
-The package owns the hard parts — the wire protocol, the SSE reader, run state, resume and the
-chat surface — and takes everything application-specific through injected adapters. It depends on
+The package owns the hard parts, the wire protocol, the SSE reader, run state, resume and the
+chat surface, and takes everything application-specific through injected adapters. It depends on
 neither SWR nor react-query, bundles no chart library, and imports no stylesheet.
 
 ## Install
@@ -47,7 +47,7 @@ no build step on install and no `prepare` script for pnpm to run.
 
 ## Quick start
 
-Mount the provider and the dock once, at the application root and **outside the router outlet** —
+Mount the provider and the dock once, at the application root and **outside the router outlet** -
 that is what makes the dock persist across navigation.
 
 ```tsx
@@ -85,8 +85,8 @@ function AppShell() {
 
 ### Opening the dock from the host
 
-The simplest wiring is the URL. Pass `urlState` — two functions over the host router's search
-params — and the dock does the rest: `?ai_open=1` opens it, `&thread=<id>` restores that
+The simplest wiring is the URL. Pass `urlState`, two functions over the host router's search
+params, and the dock does the rest: `?ai_open=1` opens it, `&thread=<id>` restores that
 conversation once, opening writes the flag, closing clears both, and a dock the user opened stays
 open when navigation drops the flag. `copilotDeepLink(threadId?, path?)` builds such a link and
 `COPILOT_URL_PARAMS` names the params.
@@ -131,8 +131,8 @@ useEffect(() => {
 }, [engine, threadId])
 ```
 
-`selectThread` fetches the thread and rebuilds its turns — plan, charts, result tables, tools and
-timing included — so a replayed answer renders through the same components as a live one. Use
+`selectThread` fetches the thread and rebuilds its turns, plan, charts, result tables, tools and
+timing included, so a replayed answer renders through the same components as a live one. Use
 `engine.loadThread(id)` when you need to await it, and `state.threadLoading` while it is in flight.
 Selecting the thread that is already open is a no-op while the panel holds turns for it, so a
 click on the highlighted rail row cannot abort a live run; `startNewThread()` is how a panel is
@@ -156,7 +156,7 @@ const [mode, setMode] = useState<CopilotDockMode>('min')
 
 `full` remains for hosts built on v0.4, where a host page composes `CopilotPanel layout='full'`
 beside `HistoryRail`: in `full` the dock renders nothing but keeps its state. Expand no longer
-leads there — it opens `expanded` — so such a host can drop its page and route.
+leads there, it opens `expanded`, so such a host can drop its page and route.
 
 In the dock, conversations live in a header popover (`ThreadsPopover`, rendered by `CopilotPanel`
 when `showThreads` is on). `HistoryRail` groups threads into Pinned · Today · Yesterday · This week
@@ -168,8 +168,8 @@ actions bound to the engine, with the optimistic list edit reverted when the bac
 
 ### Scoping a prompt without showing the scope
 
-Neither wire contract has a scope field — `CopilotAskSerializer` reads `prompt`, `thread_id` and
-`max_tokens` and nothing else — so a host that needs the model to see its page context puts that
+Neither wire contract has a scope field, `CopilotAskSerializer` reads `prompt`, `thread_id` and
+`max_tokens` and nothing else, so a host that needs the model to see its page context puts that
 context in the prompt text. `transformPrompt` keeps it off the screen:
 
 ```tsx
@@ -189,8 +189,8 @@ The backend receives the transformed text; the transcript keeps what the user ty
 is the same split one level down, and `CopilotTurnView.wirePrompt` records the difference.
 
 The composer shows a page-context chip (`@{entity.label ?? state.module}`) that the user can switch
-off for a send. The flag reaches the transform as `context.includeContext` — `false` when the chip
-is off, absent otherwise, so a transform written before the chip existed keeps its behaviour — and
+off for a send. The flag reaches the transform as `context.includeContext`, `false` when the chip
+is off, absent otherwise, so a transform written before the chip existed keeps its behaviour, and
 `engine.setContextEnabled(bool)` drives it programmatically.
 
 Apply the context transform on every included turn. A conversation can outlive a route change, so
@@ -208,8 +208,8 @@ There are two wire protocols behind one event vocabulary, and the difference is 
 
 `transport: 'auto'` (the default) tries the streaming create once and remembers the answer for the
 life of the tab. Because that memory is durable, the answer has to be about the route rather than
-about the resource. A 404 carrying a DRF `detail` — `NotFound("No such thread.")`, which is what a
-stale `?thread=` bookmark produces — is a resource error and is raised with that detail as its
+about the resource. A 404 carrying a DRF `detail`, `NotFound("No such thread.")`, which is what a
+stale `?thread=` bookmark produces, is a resource error and is raised with that detail as its
 message. A 404 that no application answered is corroborated against `GET /api/copilot-conversation/`
 before streaming is given up. `CopilotHttpError.isRouteMissing` and `.isResourceError` are those two
 questions, and a transport can answer the first for itself by implementing the optional
@@ -238,14 +238,14 @@ at `copilot/turn`, without a trailing slash.
 | list threads   | `GET /api/copilot-conversation/`                           |
 | thread history | `GET /api/copilot-turn/?conversation={threadId}`           |
 
-`CopilotAskSerializer` accepts both spellings of the two body keys — `prompt`/`prompt_text` and
-`thread_id`/`conversation` — and declares no scope field, so a scope key would be dropped and
+`CopilotAskSerializer` accepts both spellings of the two body keys, `prompt`/`prompt_text` and
+`thread_id`/`conversation`, and declares no scope field, so a scope key would be dropped and
 would still change the idempotency fingerprint. The create honours an `Idempotency-Key` header,
 which the SDK sends on every create: one key per user send, so a repeat of that send replays the
 run and answers `200` with `replayed: true` rather than spending a second time.
 
 ml-engine registers no cursor-poll route, so when the stream cannot be tailed the SSE transport
-polls the run's own detail and diffs successive snapshots — the same way the agentic transport
+polls the run's own detail and diffs successive snapshots, the same way the agentic transport
 diffs its resource: `response_text` growth becomes `message_delta`, new `execution_log`
 entries become `step_result`, `chart_config` becomes `chart`, and the integer `status` becomes
 `queued` / `done` / `error` / `cancelled`. Nothing above the transport can tell them apart.
@@ -269,47 +269,48 @@ consulting the orchestrator, so a perfectly healthy run may never emit one. Noth
 `RunState.hasPlan` records whether it arrived and the timeline renders from whatever steps exist.
 
 The list is **closed**. ml-engine's decoder accepts these eleven names and drops anything else
-without a word, which is why run-level facts that have no event of their own — `tools`,
-`execution_time`, `result_data` — ride on the terminal `done` or `error` payload instead of on a
+without a word, which is why run-level facts that have no event of their own, `tools`,
+`execution_time`, `result_data`, ride on the terminal `done` or `error` payload instead of on a
 twelfth event name. `CopilotRunSummary` is that payload; `RunState.tools`, `RunState.executionMs`
 and `RunState.resultData` are where it lands.
 
 What ml-engine actually puts on the wire is thinner than that: `done` carries `status`, `turn_id`,
 `execution_time`, `chart_available` and `response_chars`, and `error` carries a code and a detail.
-Neither carries `tools` or the tool output behind the result table, and neither can — `events.py`
+Neither carries `tools` or the tool output behind the result table, and neither can, `events.py`
 replaces any event over `COPILOT_EVENT_MAX_BYTES` with a truncation marker, so a fattened frame
 would lose the whole run summary rather than shorten it. `SseTransport` therefore holds the terminal
 event back for one read of `GET /api/copilot-turn/{turnId}/` and merges in what the frame could not
 carry. The frame wins on every key it did send, a failed read still finishes the run, and exactly
-one terminal event is emitted, already complete — so a live run shows its tools badge and its result
+one terminal event is emitted, already complete, so a live run shows its tools badge and its result
 table with the answer, and nothing above the transport ever clears the panel to get them.
 
 ### The reasoning trace
 
 `ReasoningTrace` is a collapsible card between the prompt and the answer, and it narrates the run
 from real events only. Its header follows the run: thinking dots before the first event (or the
-queue position), "Planning" once a `plan` arrives, "Reasoning — step k of n" with a live elapsed
+queue position), "Planning" once a `plan` arrives, "Reasoning, step k of n" with a live elapsed
 counter while steps run, "Waiting for your approval" when a step is `awaiting_approval`, then a
 tick and "Reasoned for 12.4 s · 7 steps · 2 specialists" on `done` (it auto-collapses 600 ms
 later), or a cross and "Stopped after 3 steps" on error or cancel. A replayed thread shows the
 collapsed summary and expands on demand.
 
 The body renders the model's `reasoning` and plan lines, one **agent card** per `call_*_agent` step
-— domain stripe, specialist name, the task the orchestrator gave it, status, elapsed, and its
-nested tool rows; two cards in the same round sit side by side above 560 px — and **tool rows**
-with a status glyph, a humanised label (`labels.tools[name]`, then `copilot.tool.<name>`, then the
-sentence-cased name), the argument summary, and the duration. Rows with detail expand to show it,
-with a raw-output toggle on a turn rebuilt from history. Nothing is invented: no synthetic timings,
-no reasoning text the backend did not send.
+
+- domain stripe, specialist name, the task the orchestrator gave it, status, elapsed, and its
+  nested tool rows; two cards in the same round sit side by side above 560 px, and **tool rows**
+  with a status glyph, a humanised label (`labels.tools[name]`, then `copilot.tool.<name>`, then the
+  sentence-cased name), the argument summary, and the duration. Rows with detail expand to show it,
+  with a raw-output toggle on a turn rebuilt from history. Nothing is invented: no synthetic timings,
+  no reasoning text the backend did not send.
 
 The card is `role="group"`, the header a `<button aria-expanded>`, status changes are announced
 through an `aria-live="polite"` region at most once a second, and every glyph carries a hidden
 status label. Rings and dots stop under `prefers-reduced-motion`. `PlanTimeline` and `RunBadges`
 remain exported as the legacy flat views.
 
-Beneath it, `.nxcp-answer` typesets the answer — list markers, `label: value` lists as a key–value
+Beneath it, `.nxcp-answer` typesets the answer, list markers, `label: value` lists as a key-value
 grid (`.nxcp-kv`), GFM tables in a scroller with numeric cells right-aligned, a lede on a short
-opening paragraph — for the built-in renderer and a host `renderMarkdown` alike, since
+opening paragraph, for the built-in renderer and a host `renderMarkdown` alike, since
 `AnswerBlocks` reads the rendered DOM once the stream has settled.
 
 ### Approvals
@@ -322,7 +323,7 @@ Approving needs the `copilot-action-execute` permission, declining needs none, a
 already been decided answers 409.
 
 Only `SseTransport` implements it. `AgenticTransport.respondToApproval` throws, because the poll
-resource surfaces no `awaiting_approval` step and serves no decision route — resolving quietly
+resource surfaces no `awaiting_approval` step and serves no decision route, resolving quietly
 would tell a user a destructive action was authorised when nothing recorded it.
 
 ## The adapter contract
@@ -408,12 +409,12 @@ Measured in the host apps rather than assumed:
 - The toaster actually mounted in viz-ui, cafm-v2-ui and prism-ui is **sonner**, which hard-codes
   `z-index: 999999999` on `[data-sonner-toaster]`. Neither app overrides it.
 - The familiar `z-[100]` belongs to the Radix `ToastViewport` in viz-ui's
-  `components/ui/toast.tsx`, which is only referenced by `ui/toaster.tsx` — a component no app
+  `components/ui/toast.tsx`, which is only referenced by `ui/toaster.tsx`, a component no app
   mounts. It is not the ceiling it looks like.
 - viz-ui's own dashboard chrome is the real competition: `spatial-widget.tsx` paints at
   `z-[40000]` and `z-[30000]`. cafm-v2-ui tops out at `z-[100]`.
 
-So the dock occupies a **60000 band** — clear of viz-ui's 40000, far below sonner so a toast stays
+So the dock occupies a **60000 band**, clear of viz-ui's 40000, far below sonner so a toast stays
 readable over an open dock:
 
 ```
@@ -422,7 +423,7 @@ dock 60000 · launcher 60010 · popover 60020 · overlay 60030
 
 Exported as `COPILOT_Z_INDEX`, with the measured competition in `COPILOT_Z_INDEX_NOTES`. The
 internal ordering mirrors the AI concierge prototype in `frontend/customer-v2/mock`, rebased out
-of its self-contained 50–160 range. The dock also portals into `document.body`, because a
+of its self-contained 50-160 range. The dock also portals into `document.body`, because a
 transformed ancestor in the host layout creates a stacking context that no z-index escapes.
 
 ## Development
@@ -455,13 +456,13 @@ git push origin v0.4.0
 **Use `git tag vX.Y.Z`. Never `git tag -a` and never `git tag -s`.**
 
 An annotated tag is its own Git object, and pnpm resolves a `github:` dependency by pinning the
-SHA the ref points at — which for an annotated tag is the tag object, not the commit it wraps.
+SHA the ref points at, which for an annotated tag is the tag object, not the commit it wraps.
 The initial install succeeds because the tarball fetch follows the ref, but every later
 re-resolve looks up a SHA that is not a commit and fails with `ERR_PNPM_GIT_CHECKOUT_FAILED`.
 This fleet has already been bitten by it: `envoy-ts-auth@v1.2.0` is annotated, and v1.3.0 and
 v1.4.0 are lightweight because of it.
 
-Check before pushing — the answer must be `commit`, not `tag`:
+Check before pushing, the answer must be `commit`, not `tag`:
 
 ```bash
 git cat-file -t v0.4.0
