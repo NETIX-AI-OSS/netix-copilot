@@ -267,21 +267,25 @@ describe('CopilotDock', () => {
     expect(document.querySelector('.nxcp-usage-track')).toBeNull()
   })
 
-  it('fills the meter against the context window the backend reports', async () => {
-    const transport = new ScriptedTransport()
-    mount(transport)
-    await send('hello')
-    transport.emit({
-      event: { type: 'usage', usage: { tokensIn: 150_000, contextWindow: 200_000 } },
-    })
-    const meter = screen.getByRole('button', { name: 'Usage: Context window 75%' })
-    expect(meter.dataset.level).toBe('mid')
-    expect(document.querySelector('.nxcp-usage-fill')).toBeTruthy()
-    fireEvent.click(meter)
-    expect(screen.getByRole('dialog', { name: 'Usage' }).textContent).toContain(
-      '150K of 200K tokens',
-    )
-  })
+  it.each([
+    ['en-US', '150K of 200K tokens'],
+    ['en-GB', '150k of 200k tokens'],
+  ])(
+    'fills the meter against the context window the backend reports (%s)',
+    async (locale, contextLabel) => {
+      const transport = new ScriptedTransport()
+      mount(transport, { locale })
+      await send('hello')
+      transport.emit({
+        event: { type: 'usage', usage: { tokensIn: 150_000, contextWindow: 200_000 } },
+      })
+      const meter = screen.getByRole('button', { name: 'Usage: Context window 75%' })
+      expect(meter.dataset.level).toBe('mid')
+      expect(document.querySelector('.nxcp-usage-fill')).toBeTruthy()
+      fireEvent.click(meter)
+      expect(screen.getByRole('dialog', { name: 'Usage' }).textContent).toContain(contextLabel)
+    },
+  )
 
   it('shows credits once the backend does send them', async () => {
     const transport = new ScriptedTransport()
