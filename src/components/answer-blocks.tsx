@@ -2,13 +2,13 @@ import type { ReactNode } from 'react'
 import { useEffect, useLayoutEffect, useRef } from 'react'
 
 // The answer container, with a pass over the rendered blocks that adds what a stylesheet cannot:
-// a `label: value` list becomes a key–value grid, a table gets a horizontal scroller and
+// a `label: value` list becomes a key-value grid, a table gets a horizontal scroller and
 // right-aligned numeric cells, a short opening paragraph becomes the lede. It reads the DOM, so
 // the built-in renderer and a host `renderMarkdown` get the same treatment.
 //
 // React owns every node in here. Moving one under a wrapper is safe only once React will never
 // remove it or insert a sibling before it, and while the caret is drawn React is still reshaping
-// the tree as text arrives — so structure waits for the caret to go; classes are added at any time.
+// the tree as text arrives, so structure waits for the caret to go; classes are added at any time.
 
 const KV_ITEM = /^\s*([^:\n]{2,48}):\s+(\S.*)$/
 const NUMERIC_CELL = /^[-+]?\d[\d.,]*\s*[%°a-zA-Z/]*$/

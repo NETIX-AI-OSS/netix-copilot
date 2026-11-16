@@ -1,5 +1,5 @@
 // The pass over a rendered answer: what the stylesheet promises for bullets and tables, and what
-// the enhancer adds for label: value lists, tables and the lede — for the built-in renderer and
+// the enhancer adds for label: value lists, tables and the lede, for the built-in renderer and
 // for host markup alike. jsdom computes no cascade, so the rules are asserted on the stylesheet
 // and the hooks they need on the DOM.
 
@@ -42,7 +42,7 @@ describe('list markers', () => {
   })
 })
 
-describe('key–value lists', () => {
+describe('key-value lists', () => {
   it('turns a label: value list into a grid of label and value spans', () => {
     const { root } = md(READINGS)
     const list = root().querySelector('ul') as HTMLElement

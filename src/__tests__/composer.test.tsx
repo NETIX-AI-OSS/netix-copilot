@@ -105,7 +105,7 @@ describe('context chip', () => {
     expect(engineRef?.getSnapshot().contextEnabled).toBe(false)
     expect(chip.getAttribute('aria-pressed')).toBe('false')
     expect(chip.getAttribute('data-state')).toBe('off')
-    expect(chip.getAttribute('title')).toBe('Not included — click to include')
+    expect(chip.getAttribute('title')).toBe('Not included, click to include')
     act(() => {
       fireEvent.click(chip)
     })
